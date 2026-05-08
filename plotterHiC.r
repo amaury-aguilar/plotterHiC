@@ -1,10 +1,13 @@
 #!/usr/bin/env Rscript
-# rplotter.r
-# Script para generar gráficos a partir de configuraciones de análisis de Hi-C
+# plotterHiC.r
+# A minimalist R tool for visualizing differential Hi-C matrices in a 45° rotated square layout together with epigenomic tracks and gene annotations.
 # Author: Oscar Amaury Aguilar Lomas
 # Date: May 5, 2026
-# Ejemplo:
-# Rscript rplotter.r plotter_config.sh
+# Usage:
+# Rscript plotterHiC.r configuration-file region-to-plot
+# Example
+# Rscript plotterHiC.r plotter_config.sh chr1:78000000:78600000
+
 # Bibliotecas necesarias -----------
 library(dplyr)
 library(ggplot2)
