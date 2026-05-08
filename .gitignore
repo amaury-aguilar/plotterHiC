@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Conda
+.env
+.conda/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# Large genomics/intermediate files
+*.bam
+*.bai
+*.sam
+*.fastq
+*.fq
+*.hic
+*.cool
+*.mcool
+
+# Output directories
+results/
+output/
+
+# Figures
+*.pdf
+*.png
+*.svg
