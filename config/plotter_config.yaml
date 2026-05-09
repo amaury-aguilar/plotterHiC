@@ -144,6 +144,12 @@ marks:
     - 200
     - 200
 
+  crop:
+    - true
+    
+  max_height:
+    - 0.95
+
 genes:
   
   directories:
