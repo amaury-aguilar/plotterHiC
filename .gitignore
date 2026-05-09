@@ -44,6 +44,4 @@ results/
 output/
 
 # Figures
-*.pdf
-*.png
 *.svg

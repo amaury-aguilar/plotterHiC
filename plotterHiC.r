@@ -3,10 +3,12 @@
 # A minimalist R tool for visualizing differential Hi-C matrices in a 45° rotated square layout together with epigenomic tracks and gene annotations.
 # Author: Oscar Amaury Aguilar Lomas
 # Date: May 5, 2026
+
 # Usage:
-# Rscript plotterHiC.r configuration-file region-to-plot
+# Rscript plotterHiC.r configuration-file region-to-plot prefix_in_output
+
 # Example
-# Rscript plotterHiC.r plotter_config.sh chr1:78000000:78600000
+# Rscript plotterHiC.r plotter_config.sh chr1:78000000-78600000 Tst
 
 # Bibliotecas necesarias -----------
 library(dplyr)
@@ -17,8 +19,20 @@ library(grid)
 library(raster)
 library(patchwork)
 library(GenomicRanges)
-#library(rtracklayer)
+library(yaml)
+library(rtracklayer)
 #
+variables <- commandArgs(trailingOnly = TRUE)
+config <- yaml::read_yaml(as.character(variables[1]))
+#config <- yaml::read_yaml("config/plotter_config.yaml")
+
+locus_coordinates <- strsplit(variables[2], ":")
+(chr <- locus_coordinates[[1]][1])
+chr <- gsub("chr", "", chr)
+(start <- strsplit(locus_coordinates[[1]][2],"-")[[1]][1])
+(end <- strsplit(locus_coordinates[[1]][2],"-")[[1]][2])
+
+nomen <- variables[3]
 # Si no está instalado, este es el comando para instalar straw :
 # remotes::install_github("aidenlab/straw/R")
 mm10 <- data.table(chr = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "X", "Y"), size = c(195471971, 182113224, 160039680, 156508116, 151834684, 149736546, 145441459, 129401213, 124595110, 130694993, 122082543, 120129022, 120421639, 124902244, 104043685, 98207768, 94987271, 90702639, 61431566, 171031299, 91744698))
@@ -27,71 +41,52 @@ hg38 <- data.table(chr = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "1
 hg19 <- data.table(chr = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y"), size = c(249250621, 243199373, 198022430, 191154276, 180915260, 171115067, 159138663, 146364022, 141213431, 135534747, 135006516, 133851895, 115169878, 107349540, 102531392, 90354753, 81195210, 78077248, 59128983, 63025520, 48129895, 51304566, 155270560, 59373566))
 genome.list <- list(mm10 = mm10, hg38 = hg38, hg19 = hg19, mm10_test = mm10_test)
 
-#- Variables ---------------------------------------------------------------------
-configuracion <- read.table("config/plotter_config.sh", header = F, row.names = 1)
-
-(nomen <- as.character(configuracion["nomen:", 1]))
-(chr.list.var <- as.character(configuracion["genome_reference:", 1]))
-(hic.dir <- as.character(configuracion["hic_directories:", 1]))
-(hic.file.ctrl <- as.character(configuracion["hic_file_ctrl:", 1]))
-(hic.file <- as.character(configuracion["hic_file:", 1]))
-(hic_names <- strsplit(configuracion["hic_names:", 1],",")[[1]])
-(matrix_choices <- strsplit(configuracion["matrix_choices:", 1]," ")[[1]])
-(resol <- as.numeric(configuracion["resolucion:", 1]))
-(marks_dir <- as.character(configuracion["marks_dir:", 1]))
-marks_names <- strsplit(configuracion["marks_names:", 1]," ")[[1]]
-marks <- strsplit(configuracion["marks:", 1]," ")[[1]]
-marks_colors <- strsplit(configuracion["marks_colors:", 1]," ")[[1]]
-track_offset <- strsplit(configuracion["track_offset:", 1]," ")[[1]]
-track_heigh <- strsplit(configuracion["track_heigh:", 1]," ")[[1]]
-marks_bin_size <- strsplit(configuracion["marks_bin_size:", 1]," ")[[1]]
-gene_height <- as.numeric(configuracion["gene_height:", 1])
-genes_offset <- as.numeric(configuracion["genes_offset:", 1])
-genes_labels_offset <- strsplit(configuracion["genes_labels_offset:", 1]," ")[[1]]
-gene_label_size <- as.numeric(configuracion["gene_label_size:", 1])
-genes_labels <- strsplit(configuracion["genes_labels:", 1]," ")[[1]]
-marks_label_size <- as.numeric(configuracion["marks_label_size:", 1])
-min_plot <- strsplit(configuracion["min_plot:", 1]," ")[[1]]
-max_plot <- strsplit(configuracion["max_plot:", 1]," ")[[1]]
-show_legend <- strsplit(configuracion["show_legend:", 1]," ")[[1]]
-legend_position_x <- strsplit(configuracion["legend_position_x:", 1]," ")[[1]]
-legend_position_y <- strsplit(configuracion["legend_position_y:", 1]," ")[[1]]
-legend_direction  <- strsplit(configuracion["legend_direction:", 1]," ")[[1]]
-legend_title_size  <- strsplit(configuracion["legend_title_size:", 1]," ")[[1]]
-legend_text_size  <- strsplit(configuracion["legend_text_size:", 1]," ")[[1]]
-legend_key_height  <- strsplit(configuracion["legend_key_height:", 1]," ")[[1]]
-legend_key_width  <- strsplit(configuracion["legend_key_width:", 1]," ")[[1]]
-plot_proportions <- strsplit(configuracion["plot_proportions:", 1]," ")[[1]]
-shared_yaxis_groups_raw <- strsplit(configuracion["shared_yaxis_groups:", 1]," ")[[1]]
-dir_plots <- as.character(configuracion["dir_plots:", 1])
-
-legend_position_x <- as.numeric(legend_position_x)
-legend_position_y <- as.numeric(legend_position_y)
-legend_title_size <- as.numeric(legend_title_size)
-legend_text_size <- as.numeric(legend_text_size)
-legend_key_height <- as.numeric(legend_key_height)
-legend_key_width <- as.numeric(legend_key_width)
-show_legend <- as.logical(show_legend)
-genes_labels_offset <- as.numeric(genes_labels_offset)
-track_offset <- as.numeric(track_offset)
-track_heigh <- as.numeric(track_heigh)
-marks_bin_size <- as.numeric(marks_bin_size)
-plot_proportions <- as.numeric(plot_proportions)
-min_plot <- as.numeric(min_plot)
-max_plot <- as.numeric(max_plot)
-
-shared_groups <- lapply(
-  shared_yaxis_groups_raw,
-  function(x){
-    split_x <- strsplit(x, ":")[[1]]
-    marks <- strsplit(split_x[2], ",")[[1]]
-    return(marks)
-  }
-)
-names(shared_groups) <- sapply(
-  shared_yaxis_groups_raw,
-  function(x) strsplit(x, ":")[[1]][1]
-)
+#------------------------------ Variables --------------------------------------
+#General
+(chr.list.var <- config$genome_reference)
+# HiC
+(hic.dir <- config$hic$directory)
+(hic.file.ctrl <- config$hic$ctrl_file)
+(hic.file <- config$hic$file)
+(hic_names <- config$hic$names)
+(matrix_choices <- config$hic$matrix_choices)
+(resol <- config$hic$resolution)
+(min_plot <- as.numeric(config$hic$min_plot))
+(max_plot <- as.numeric(config$hic$max_plot))
+# Heatmap legends
+(show_legend <- as.logical(config$heatmap_legends$show))
+(legend_position_x <- as.numeric(config$heatmap_legends$position_x))
+(legend_position_y <- as.numeric(config$heatmap_legends$position_y))
+(legend_direction <- config$heatmap_legends$direction)
+(legend_title_size <- as.numeric(config$heatmap_legends$title_size))
+(legend_text_size <- as.numeric(config$heatmap_legends$text_size))
+(legend_key_height <- as.numeric(config$heatmap_legends$key_height))
+(legend_key_width <- as.numeric(config$heatmap_legends$key_width))
+# Marks
+(marks_dir <- config$marks$directory)
+(marks_names <- config$marks$names)
+(marks <- config$marks$files)
+(marks_colors <- config$marks$colors)
+(track_offset <- as.numeric(config$marks$track_offset))
+(track_height <- as.numeric(config$marks$track_height))
+(marks_label_size <- config$marks$label_size)
+(marks_bin_size <- as.numeric(config$marks$bin_size))
+# Genes
+(genes_dir <- config$genes$directories)
+(genes_files <- config$genes$genes_files)
+(genes_offset <- as.numeric(config$genes$offset))
+(genes_labels <- config$genes$labels)
+(genes_labels_offset <- as.numeric(config$genes$labels_offset))
+(gene_height <- as.numeric(config$genes$height))
+(gene_label_size <- as.numeric(config$genes$label_size))
+# Plot
+(plot_proportions <- as.numeric(config$plot$proportions))
+(dir_plots <- config$plot$directory)
+(plot_format <- config$plot$format)
+(plot_height <- config$plot$height)
+(plot_width <- config$plot$width)
+# Shared groups
+(shared_groups <- config$shared_yaxis_groups)
 
 mat_parameters <- data.table(
    hic_names=hic_names,
@@ -145,9 +140,9 @@ scale_colors <- function(hicName, dt, values, minimo = NA, maximo = NA) {
                 oob = scales::censor,
                 na.value = "transparent"
             )
-        } else if (values == "substraction") {
+        } else if (values == "subtraction") {
             scale <- scale_fill_gradientn(
-                name = paste0(as.character("Substraction\n",hicName)),
+                name = paste0(as.character("subtraction\n",hicName)),
                 limits = c(minimo, maximo),
                 colours = c("blue", "white", "red"),
                 values = scales::rescale(c(minimo, 0, maximo))
@@ -166,9 +161,9 @@ scale_colors <- function(hicName, dt, values, minimo = NA, maximo = NA) {
               as.character(paste0(hicName,"\nInteractions \n(log2)")),
                 colours = c("white", "orange", "darkred", "black")
             )
-        } else if (values == "substraction") {
+        } else if (values == "subtraction") {
             scale <- scale_fill_gradientn(
-              name = paste0(as.character("Substraction\n",hicName)), 
+              name = paste0(as.character("subtraction\n",hicName)), 
                 limits = c(min(dt$counts, na.rm = TRUE), max(dt$counts, na.rm = TRUE)),
                 colours = c("blue", "white", "red"),
                 values = scales::rescale(c(min(dt$counts, na.rm = TRUE), 0, max(dt$counts, na.rm = TRUE)))
@@ -221,7 +216,9 @@ matriz_horizontal <- function(hicName,
         scale +
         ggtitle(region) +
         scale_y_continuous(limits = c(0, quantil_v[2]), expand = c(0, 0)) +
-        scale_x_continuous(limits = c(quantil_u[1], quantil_u[2]),position = "top",expand = c(0, 0),labels = function(u_vals) {round(u_vals / sqrt(2) / 1e6, 2)}) +
+        scale_x_continuous(limits = c(quantil_u[1], quantil_u[2]),
+                           position = "top",expand = c(0, 0),
+                           labels = function(u_vals) {round(u_vals / sqrt(2) / 1e6, 1)}) +
         theme_minimal() +
         theme(
             panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
@@ -263,9 +260,7 @@ genomic_to_u <- function(x){
     x * sqrt(2)
 }
 #-----------------------------------------------------------------------------
-chr <- as.character(15)
 chr_idx <- chr
-
 bins.chr <- (round(chr.list[as.integer(chr_idx), 2] / resol)**2) / 2
 
 locus <- c(78000000, 78600000)
@@ -292,11 +287,11 @@ setnames(mtz_ctrl, "norm", "counts")
 setkey(mtz, x, y)
 setkey(mtz_ctrl, x, y)
 mtz_diff <- merge(mtz, mtz_ctrl, by = c("x", "y"), all.x = TRUE, suffixes = c("", "_ctrl"))
-mtz_diff[, substraction := (counts - counts_ctrl) * avg_sum]
+mtz_diff[, subtraction := (counts - counts_ctrl) * avg_sum]
 mtz_diff[, ratio := counts / counts_ctrl]
 
-anchor_down <- seq.int(locus[1], locus[2], resol)
-anchor_up <- seq.int(locus[1], locus[2], resol)
+anchor_down <- seq.int(start, end, resol)
+anchor_up <- seq.int(start, end, resol)
 cartesian_map <- CJ(x = anchor_down, y = anchor_up, sorted = FALSE)
 setkey(cartesian_map, x, y)
 locus_map <- mtz_diff[cartesian_map]
@@ -356,7 +351,7 @@ bw_files <- as.list(marks)
 names(bw_files) <- marks_names
 names(marks_colors) <- marks_names
 names(track_offset) <- marks_names
-names(track_heigh) <- marks_names
+names(track_height) <- marks_names
 names(marks_bin_size) <- marks_names
 
 region_gr <- GRanges(
@@ -411,7 +406,7 @@ bw_signal_dt <- rbindlist(bw_signal_ls)
 track_config <- data.table(
     mark = names(bw_files),
     y_offset = as.vector(track_offset[names(bw_files)]),
-    track_height = track_heigh[names(bw_files)],
+    track_height = track_height[names(bw_files)],
     color = marks_colors[names(bw_files)],
     label_offset = 0.4
 )
@@ -639,14 +634,14 @@ dir.create(dir_plots)
 
 formato <- "png" # "pdf" o "png"
   if(formato=="png"){
-    path.plot <- paste0(dir_plots,"/",nomen,".",chr,"_",
-                        paste0(locus, collapse = "_"),".",
+    path.plot <- paste0(dir_plots,"/",nomen,".",
+                        chr,"_",start,"_",end,".",
                         resol,".", "_bins.hicplot.png")
     device.plot <- png(path.plot,width=10,
                        height=15,units="cm",res=500)
   } else if (formato=="pdf"){
-    path.plot <- paste0(dir_plots,"/",nomen,".",chr,"_",
-                        paste0(locus, collapse = "_"),".",
+    path.plot <- paste0(dir_plots,"/",nomen,".",
+                        chr,"_",start,"_",end,".",
                         resol,".", "_bins.hicplot.pdf")
     device.plot <- pdf(path.plot, width = 5 / 2.54, 
                        height = 10 / 2.54) 

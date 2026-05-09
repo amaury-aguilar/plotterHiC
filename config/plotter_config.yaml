@@ -1,0 +1,205 @@
+# plotter_config.yaml
+# 2026-May-5
+
+genome_reference: mm10                 # Versión del genoma
+
+hic:
+  directory: /Users/amaury/lines/mouse/endothelial_Cells/juicer/
+  ctrl_file: Ctcf_WT.allReps.896MvP.hic
+  file: Ctcf_KO.allReps.896MvP.hic
+
+  names:
+    - Ctcf_WT
+    - Ctcf_KO
+    - Ctcf-KO - Ctcf-WT
+
+  resolution: 5000
+
+  matrix_choices:
+    - log2_ctrl
+    - log2
+    - subtraction
+
+  min_plot:
+    - 3
+    - 4
+    - -22
+
+  max_plot:
+    - 10
+    - 10
+    - 20
+
+heatmap_legends:
+
+  show:
+    - true
+    - true
+    - true
+
+  position_x:
+    - -0.08
+    - -0.08
+    - -0.08
+
+  position_y:
+    - 0.5
+    - 0.5
+    - 0.5
+
+  direction:
+    - vertical
+    - vertical
+    - vertical
+
+  title_size:
+    - 5
+    - 5
+    - 5
+
+  text_size:
+    - 5
+    - 5
+    - 5
+
+  key_height:
+    - 7
+    - 7
+    - 7
+
+  key_width:
+    - 5
+    - 5
+    - 5
+
+marks:
+
+  directory: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/
+
+  names:
+    - ATAC_WT
+    - ATAC_KO
+    - RNAseq_WT
+    - RNAseq_KO
+    - H3K4me3
+    - H3K4me1
+    - H3K27ac
+    - H3K27me3
+    - CTCF
+
+  files:
+    - ATACseq.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - ATACseq.Ctcf_KO.trim_Ad_3pb.h2.scaleFact.bw
+    - rnaseq.Ctcf_WT.trim.paired.star.scaleFact.bw
+    - rnaseq.Ctcf_KO.trim.single.star.scaleFact.bw
+    - H3K4me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - H3K4me1.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - H3K27ac.Ctcf_WT.ys204_ys240.trim_Ad_3pb.h2.scaleFact.bw
+    - H3K27me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - Ctcf.Ctcf_WT.ys115_ys200.trim_Ad_3pb.h2.scaleFact.bw
+
+  colors:
+    - "#000000"
+    - gray30
+    - pink4
+    - pink
+    - orange1
+    - yellow4
+    - green4
+    - red3
+    - blue3
+
+  track_offset:
+    - 9
+    - 8
+    - 7
+    - 6
+    - 5
+    - 4
+    - 3
+    - 2
+    - 1
+
+  track_height:
+    - 50
+    - 50
+    - 4
+    - 4
+    - 10
+    - 20
+    - 100
+    - 20
+    - 35
+
+  label_size: 6
+
+  bin_size:
+    - 200
+    - 200
+    - 200
+    - 200
+    - 200
+    - 200
+    - 200
+    - 200
+    - 200
+
+genes:
+  
+  directories:
+    - /Users/amaury/genes/
+    - /Users/amaury/genes/
+
+  genes_files:
+    - Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed
+    - mm10.gene.track.sym.sorted.bed
+
+  offset: 
+    - 10.5
+    - 11
+
+  labels: 
+    - DEGs
+    - Genes
+
+  labels_offset: 
+    - 10
+    - 11
+
+  height: 
+    - 0.1
+    - 0.05
+
+  label_size: 
+    - 2
+    - 0.5
+
+  show_label: 
+    - true
+    - false
+
+plot:
+
+  proportions:
+    - 1
+    - 1
+    - 1
+    - 2.5
+
+  directory: /Users/amaury/lastHiC_analysis/plots_rplotter
+
+  format: png
+
+  height: 15
+  
+  width: 10
+
+shared_yaxis_groups:
+
+  ATACseq:
+    - ATAC_WT
+    - ATAC_KO
+
+  RNAseq:
+    - RNAseq_WT
+    - RNAseq_KO
