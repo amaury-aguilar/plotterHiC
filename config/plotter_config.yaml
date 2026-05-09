@@ -156,7 +156,7 @@ genes:
 
   offset: 
     - 10.5
-    - 11
+    - 11.3
 
   labels: 
     - DEGs
@@ -167,8 +167,8 @@ genes:
     - 11
 
   height: 
-    - 0.1
-    - 0.05
+    - 0.15
+    - 0.03
 
   label_size: 
     - 2
@@ -177,6 +177,10 @@ genes:
   show_label: 
     - true
     - false
+
+  jitter:
+    - 0
+    - 0.4  
 
 plot:
 
