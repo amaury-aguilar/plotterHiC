@@ -23,12 +23,12 @@ hic:
   min_plot:
     - 3
     - 4
-    - -15
+    - NA
 
   max_plot:
     - 10
     - 10
-    - 15
+    - NA
 
 heatmap_legends:
 
@@ -157,8 +157,8 @@ genes:
     - /Users/amaury/genes/mm10.gene.track.sym.sorted.bed
 
   offset: 
-    - 10.8
-    - 11.5
+    - 10.5
+    - 11.6
 
   labels: 
     - DEGs
@@ -181,8 +181,8 @@ genes:
     - false
 
   jitter:
-    - 0.5
-    - 0.5  
+    - 0.4
+    - 0.25  
 
 plot:
 

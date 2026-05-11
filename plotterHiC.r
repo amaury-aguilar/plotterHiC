@@ -9,7 +9,11 @@
 
 # Example
 # Rscript plotterHiC.r plotter_config.yaml chr1:78000000-78600000 Tst
-
+#------------------------------- Measure Time --------------------------------
+start.time <- Sys.time()
+options(scipen = 999)
+dir <- getwd()
+setwd(dir)
 # Bibliotecas necesarias -----------
 library(dplyr)
 library(ggplot2)
@@ -21,36 +25,41 @@ library(patchwork)
 library(GenomicRanges)
 library(yaml)
 library(rtracklayer)
+library(ggrepel)
 #
-variables <- commandArgs(trailingOnly = TRUE)
+# variables <- commandArgs(trailingOnly = TRUE)
+# 
+# config <- yaml::read_yaml(as.character(variables[1]))
+# 
+# locus_coordinates <- strsplit(variables[2], ":")
+# (chr <- locus_coordinates[[1]][1])
+# chr <- gsub("chr", "", chr)
+# (requested_start <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][1]))
+# (requested_end <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][2]))
+# 
+# nomen <- variables[3]
+# 
+# region_size <- requested_end - requested_start
+# 
+# padding_fraction <- 0.333
+# 
+# start <- requested_start - (region_size * padding_fraction)
+# end <- requested_end + (region_size * padding_fraction)
 
-config <- yaml::read_yaml(as.character(variables[1]))
 
-locus_coordinates <- strsplit(variables[2], ":")
-(chr <- locus_coordinates[[1]][1])
-chr <- gsub("chr", "", chr)
+config <- yaml::read_yaml("config/plotter_config.yaml")
+var2 <- "chr11:31640000-32350000"
+locus_coordinates <- strsplit(var2, ":")
+chr <- locus_coordinates[[1]][1]
+(chr <- gsub("chr", "", chr))
 (requested_start <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][1]))
 (requested_end <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][2]))
 
-nomen <- variables[3]
-
 region_size <- requested_end - requested_start
-
 padding_fraction <- 0.333
-
+nomen <- "Rpl23a"
 start <- requested_start - (region_size * padding_fraction)
 end <- requested_end + (region_size * padding_fraction)
-
-# # 
-# config <- yaml::read_yaml("config/plotter_config.yaml")
-# var2 <- "chr7:142000000-143000000"
-# locus_coordinates <- strsplit(var2, ":")
-# chr <- locus_coordinates[[1]][1]
-# (chr <- gsub("chr", "", chr))
-# (start <- strsplit(locus_coordinates[[1]][2],"-")[[1]][1])
-# (end <- strsplit(locus_coordinates[[1]][2],"-")[[1]][2])
-# 
-# nomen <- "Ctsd"
 
 # Si no está instalado, este es el comando para instalar straw :
 # remotes::install_github("aidenlab/straw/R")
@@ -109,6 +118,9 @@ genome.list <- list(mm10 = mm10, hg38 = hg38, hg19 = hg19, mm10_test = mm10_test
 # Shared groups
 (shared_groups <- config$shared_yaxis_groups)
 
+start <- round(start/resol,0)*resol
+end <- round(end/resol,0)*resol
+  
 mat_parameters <- data.table(
    hic_names=hic_names,
    choices=matrix_choices,
@@ -124,11 +136,6 @@ mat_parameters <- data.table(
    legend_key_width=legend_key_width)
 
 chr.list <- genome.list[[chr.list.var]]
-#------------------------------- Measure Time --------------------------------
-start.time <- Sys.time()
-options(scipen = 999)
-dir <- getwd()
-setwd(dir)
 #------------------------------- FUNCTIONS -----------------------------------
 # Generacion de polygonos -----------------
 to_polygon <- function(x, y, counts) {
@@ -239,7 +246,7 @@ matriz_horizontal <- function(hicName,
         scale_y_continuous(limits = c(0, quantil_v[2]), expand = c(0, 0)) +
         scale_x_continuous(limits = c(quantil_u[1], quantil_u[2]),
                            position = "top",expand = c(0, 0),
-                           labels = function(u_vals) {round(u_vals / sqrt(2) / 1e6, 1)}) +
+                           labels = function(u_vals) {round(u_vals / sqrt(2) / 1e6, 2)}) +
         theme_minimal() +
         theme(
             panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
@@ -314,6 +321,7 @@ anchor_down <- seq.int(start, end, resol)
 anchor_up <- seq.int(start, end, resol)
 cartesian_map <- CJ(x = anchor_down, y = anchor_up, sorted = FALSE)
 setkey(cartesian_map, x, y)
+
 locus_map <- mtz_diff[cartesian_map]
 num_cols <- names(locus_map)[sapply(locus_map, is.numeric)]
 locus_map[, (num_cols) := lapply(.SD, nafill, fill = 0), .SDcols = num_cols]
@@ -362,7 +370,7 @@ for(i in seq_along(matrix_choices)){
     )
   }
 }
-
+# plot_ls[[1]]
 # visible genomic interval from HiC
 visible_region <- mat_ls[[1]]$visible
 
@@ -573,18 +581,19 @@ triangle_track_dt <- gene_arrows[, {
     }
 }, by = .(gene,track)]
 
-
-#gene_track_labels[,labels_offset:=genes_labels_offset[g]]
-gene_track_labels[, labels_offset := y - 0.35]
+gene_track_labels[,label_size:=gene_label_size[g]]
+gene_track_labels[,offset:=genes_offset[g]]
+# gene_track_labels[,labels_offset:=genes_labels_offset[g]]
+# gene_track_labels[, labels_offset := y - 0.35]
 
 genes_dt <- rbind(genes_dt,genes_track_dt)
 triangle_dt <- rbind(triangle_dt, triangle_track_dt)
 gene_labels <- rbind(gene_labels, gene_track_labels)
-
 }
 
 #----------------------------- BIGWIG BROWSER PLOT -----------------------------
-
+# In the future add gene_label_size to gene_labels_dt 
+# and use it in geom_text_repel
 gene_labels <- gene_labels[show_label == TRUE]
 
 track_labels <- bw_signal_dt[
@@ -634,8 +643,8 @@ tracks_plot <- ggplot() +
   scale_x_continuous(limits = c(visible_region$start, visible_region$end),
                      expand = c(0,0),labels = function(x){round(x / 1e6, 2)},
                      position = "top") +
-  scale_y_continuous(limits = c(min(c(genes_labels_offset,track_offset)),
-                                max(c(genes_labels_offset,track_offset)+0.5)),
+  scale_y_continuous(limits = c(min(c(genes_offset,track_offset)),
+                                max(c(genes_offset,track_offset)+0.5)),
                      expand = c(0,0),
                      breaks = track_labels_dt$y_offset,
                      labels = track_labels_dt$mark) +
@@ -668,18 +677,30 @@ tracks_plot <- ggplot() +
         ), color = "black",linewidth = 0.2) +
     geom_polygon(
     data = triangle_dt,
-    aes(
-        x = x,
-        y = y,
-        group = interaction(gene, track),
-        fill = color
-    ),   
+    aes(x = x, y = y, group = interaction(gene, track), fill = color),   
     color = "black",
     linewidth = 0.2,
     inherit.aes = FALSE)  +
-    geom_text(data = gene_labels,
-        aes(x = middle, y = labels_offset, label = gene),
-        size = gene_label_size[1],fontface = "bold")
+  geom_text_repel(
+    data = gene_labels,
+    aes(x = middle, y = y, label = gene, size = label_size),
+    fontface = "bold",
+    force = 10,
+    max.overlaps = Inf,
+    min.segment.length = 0,
+    segment.size = 0.2,
+    box.padding = 0.2,
+    point.padding = 0.1,
+    ylim = c(min(gene_labels$y) - 0.8,max(gene_labels$y) + 0.8)
+  ) +
+  scale_size_identity()
+
+# geom_text_repel(nudge_y = -0.2,
+  #direction = "both", # "x" "y" "both"
+  #segment.curvature = 0.1, # segment.alpha = 0.5)
+    # geom_text(data = gene_labels,
+    #     aes(x = middle, y = labels_offset, label = gene),
+    #     size = gene_label_size[1],fontface = "bold")
 #----------------------------- COMBINE -----------------------------------------
 final_plot <-
   plot_ls[[1]] / plot_ls[[2]] / plot_ls[[3]] /
