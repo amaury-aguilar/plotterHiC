@@ -23,12 +23,12 @@ hic:
   min_plot:
     - 3
     - 4
-    - -22
+    - -15
 
   max_plot:
     - 10
     - 10
-    - 20
+    - 15
 
 heatmap_legends:
 
@@ -74,8 +74,6 @@ heatmap_legends:
 
 marks:
 
-  directory: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/
-
   names:
     - ATAC_WT
     - ATAC_KO
@@ -88,21 +86,23 @@ marks:
     - CTCF
 
   files:
-    - ATACseq.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - ATACseq.Ctcf_KO.trim_Ad_3pb.h2.scaleFact.bw
-    - rnaseq.Ctcf_WT.trim.paired.star.scaleFact.bw
-    - rnaseq.Ctcf_KO.trim.single.star.scaleFact.bw
-    - H3K4me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - H3K4me1.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - H3K27ac.Ctcf_WT.ys204_ys240.trim_Ad_3pb.h2.scaleFact.bw
-    - H3K27me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - Ctcf.Ctcf_WT.ys115_ys200.trim_Ad_3pb.h2.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_ATAC_hisat2/ys211.ATACseq.WT.trim_Ad_3pb.h2.0_120pb.scaleFact.bw
+
+    - /Users/amaury/toronto_CUTNTag/bigwigs_ATAC_hisat2/ys300.ATACseq.Ctcf_KO.trim_Ad_3pb.h2.0_120pb.scaleFact.bw
+
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_WT.trim.paired.star.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_KO.trim.single.star.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me1.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27ac.Ctcf_WT.ys204_ys240.trim_Ad_3pb.h2.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/Ctcf.Ctcf_WT.ys115_ys200.trim_Ad_3pb.h2.scaleFact.bw
 
   colors:
-    - "#000000"
-    - gray30
+    - black
+    - black
     - pink4
-    - pink
+    - pink4
     - orange1
     - yellow4
     - green4
@@ -121,48 +121,44 @@ marks:
     - 1
 
   track_height:
-    - 50
-    - 50
-    - 4
-    - 4
-    - 10
-    - 20
-    - 100
-    - 20
-    - 35
+    - 1 # ATACseq tracks are taller to be more visible
+    - 1 # ATACseq tracks are taller to be more visible
+    - 4 # RNAseq tracks are shorter to avoid dominating the plot
+    - 4 # RNAseq tracks are shorter to avoid dominating the plot
+    - 8 # H3K4me3
+    - 30 # H3K4me1
+    - 100 # H3K27ac
+    - 20 # H3K27me3
+    - 70 # CTCF
 
   label_size: 6
 
   bin_size:
-    - 200
-    - 200
-    - 200
-    - 200
-    - 200
-    - 200
-    - 200
-    - 200
-    - 200
+    - 400
+    - 400
+    - 300
+    - 300
+    - 300
+    - 300
+    - 300
+    - 300
+    - 400
 
   crop:
     - true
-    
+
   max_height:
     - 0.95
 
 genes:
   
-  directories:
-    - /Users/amaury/genes/
-    - /Users/amaury/genes/
-
   genes_files:
-    - Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed
-    - mm10.gene.track.sym.sorted.bed
+    - /Users/amaury/genes/Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed
+    - /Users/amaury/genes/mm10.gene.track.sym.sorted.bed
 
   offset: 
-    - 10.5
-    - 11.3
+    - 10.8
+    - 11.5
 
   labels: 
     - DEGs
@@ -185,8 +181,8 @@ genes:
     - false
 
   jitter:
-    - 0
-    - 0.4  
+    - 0.5
+    - 0.5  
 
 plot:
 

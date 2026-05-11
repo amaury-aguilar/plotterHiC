@@ -8,7 +8,7 @@
 # Rscript plotterHiC.r configuration-file region-to-plot prefix_in_output
 
 # Example
-# Rscript plotterHiC.r plotter_config.sh chr1:78000000-78600000 Tst
+# Rscript plotterHiC.r plotter_config.yaml chr1:78000000-78600000 Tst
 
 # Bibliotecas necesarias -----------
 library(dplyr)
@@ -23,16 +23,35 @@ library(yaml)
 library(rtracklayer)
 #
 variables <- commandArgs(trailingOnly = TRUE)
+
 config <- yaml::read_yaml(as.character(variables[1]))
-#config <- yaml::read_yaml("config/plotter_config.yaml")
 
 locus_coordinates <- strsplit(variables[2], ":")
 (chr <- locus_coordinates[[1]][1])
 chr <- gsub("chr", "", chr)
-(start <- strsplit(locus_coordinates[[1]][2],"-")[[1]][1])
-(end <- strsplit(locus_coordinates[[1]][2],"-")[[1]][2])
+(requested_start <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][1]))
+(requested_end <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][2]))
 
 nomen <- variables[3]
+
+region_size <- requested_end - requested_start
+
+padding_fraction <- 0.333
+
+start <- requested_start - (region_size * padding_fraction)
+end <- requested_end + (region_size * padding_fraction)
+
+# # 
+# config <- yaml::read_yaml("config/plotter_config.yaml")
+# var2 <- "chr7:142000000-143000000"
+# locus_coordinates <- strsplit(var2, ":")
+# chr <- locus_coordinates[[1]][1]
+# (chr <- gsub("chr", "", chr))
+# (start <- strsplit(locus_coordinates[[1]][2],"-")[[1]][1])
+# (end <- strsplit(locus_coordinates[[1]][2],"-")[[1]][2])
+# 
+# nomen <- "Ctsd"
+
 # Si no está instalado, este es el comando para instalar straw :
 # remotes::install_github("aidenlab/straw/R")
 mm10 <- data.table(chr = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "X", "Y"), size = c(195471971, 182113224, 160039680, 156508116, 151834684, 149736546, 145441459, 129401213, 124595110, 130694993, 122082543, 120129022, 120421639, 124902244, 104043685, 98207768, 94987271, 90702639, 61431566, 171031299, 91744698))
@@ -63,7 +82,6 @@ genome.list <- list(mm10 = mm10, hg38 = hg38, hg19 = hg19, mm10_test = mm10_test
 (legend_key_height <- as.numeric(config$heatmap_legends$key_height))
 (legend_key_width <- as.numeric(config$heatmap_legends$key_width))
 # Marks
-(marks_dir <- config$marks$directory)
 (marks_names <- config$marks$names)
 (marks <- config$marks$files)
 (marks_colors <- config$marks$colors)
@@ -71,14 +89,17 @@ genome.list <- list(mm10 = mm10, hg38 = hg38, hg19 = hg19, mm10_test = mm10_test
 (track_height <- as.numeric(config$marks$track_height))
 (marks_label_size <- config$marks$label_size)
 (marks_bin_size <- as.numeric(config$marks$bin_size))
+(crop_tracks <- as.logical(config$marks$crop))
+(track_max_height <- as.numeric(config$marks$max_height))
 # Genes
-(genes_dir <- config$genes$directories)
 (genes_files <- config$genes$genes_files)
 (genes_offset <- as.numeric(config$genes$offset))
 (genes_labels <- config$genes$labels)
 (genes_labels_offset <- as.numeric(config$genes$labels_offset))
 (gene_height <- as.numeric(config$genes$height))
 (gene_label_size <- as.numeric(config$genes$label_size))
+(show_label <- as.logical(config$genes$show_label))
+(gene_jitter <- as.numeric(config$genes$jitter))
 # Plot
 (plot_proportions <- as.numeric(config$plot$proportions))
 (dir_plots <- config$plot$directory)
@@ -263,7 +284,6 @@ genomic_to_u <- function(x){
 chr_idx <- chr
 bins.chr <- (round(chr.list[as.integer(chr_idx), 2] / resol)**2) / 2
 
-locus <- c(78000000, 78600000)
 print(paste0("Cargando matrices .hic de chr", chr))
 mtz <- strawr::straw("KR", paste0(hic.dir, hic.file), chr, chr, "BP", resol, matrix = "observed")
 mtz_ctrl <- strawr::straw("KR", paste0(hic.dir, hic.file.ctrl), chr, chr, "BP", resol, matrix = "observed")
@@ -369,10 +389,7 @@ for(mark in names(bw_files)){
   
   bins <- tile(region_gr, n = marks_bin_size[mark])[[1]]
 
-    bw <- import(
-        paste0(marks_dir, bw_files[[mark]]),
-        which = region_gr
-    )
+    bw <- import(bw_files[[mark]], which = region_gr)
 
     signal_vec <- numeric(length(bins))
 
@@ -407,12 +424,12 @@ track_config <- data.table(
     mark = names(bw_files),
     y_offset = as.vector(track_offset[names(bw_files)]),
     track_height = track_height[names(bw_files)],
-    color = marks_colors[names(bw_files)],
-    label_offset = 0.4
+    color = marks_colors[names(bw_files)]
 )
 #----------------------------- LOG SIGNAL --------------------------------------
 bw_signal_dt[, log_signal := log10(1 + signal)]
 #----------------------------------Share scale----------------------------------
+bw_signal_dt[, display_max := max(log_signal, na.rm = TRUE), by = mark]
 for(group in shared_groups){
   shared_max <- bw_signal_dt[
     mark %in% group,
@@ -428,24 +445,38 @@ setDT(bw_signal_dt)
 setDT(track_config)
 bw_signal_dt <- track_config[bw_signal_dt, on = "mark"]
 # independent scaling per track
-bw_signal_dt[, ymax := y_offset + (log_signal * track_height)]
+# bw_signal_dt[, ymax := y_offset + (log_signal * track_height)]
+# bw_signal_dt[, ymin := y_offset]
+# independent scaling per track
+
+if(crop_tracks){
+  bw_signal_dt[,
+    ymax := pmin(
+      y_offset + (log_signal * track_height),
+      y_offset + track_max_height
+    )
+  ]
+} else {
+  bw_signal_dt[,
+    ymax := y_offset + (log_signal * track_height)
+  ]
+}
 bw_signal_dt[, ymin := y_offset]
 #----------------------------- GENE TRACK --------------------------------------
 
-bed_file <- "/Users/amaury/genes/Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed"
+genes_dt <- data.table()
+triangle_dt <- data.table()
+gene_labels <- data.table()
+for (g in seq_along(genes_files)){
+bed_file <- paste0(genes_files[g])
 
 genes_gr <- import(bed_file)
 
-genes_gr <- genes_gr[
-    seqnames(genes_gr) == paste0("chr", chr)
-]
+genes_gr <- genes_gr[seqnames(genes_gr) == paste0("chr", chr)]
 
-genes_gr <- subsetByOverlaps(
-    genes_gr,
-    region_gr
-)
+genes_gr <- subsetByOverlaps(genes_gr, region_gr)
 
-genes_dt <- data.table(
+genes_track_dt <- data.table(
     start = start(genes_gr),
     end   = end(genes_gr),
     strand = as.character(strand(genes_gr)),
@@ -454,28 +485,40 @@ genes_dt <- data.table(
     color = genes_gr@elementMetadata$itemRgb    
 )
 
-gene_track_y <- genes_offset
-genes_dt[, y := gene_track_y]
+gene_track_y <- genes_offset[g]
+
+genes_track_dt[, y := gene_track_y]
+
+genes_track_dt[, y := y + runif(.N, -gene_jitter[g], gene_jitter[g])]
+
+genes_track_dt[, track := g]
+
+genes_track_dt[,show_label := show_label[g]]
 
 # gene labels
-gene_labels <- unique(
-    genes_dt[, .(
+gene_track_labels <- unique(
+    genes_track_dt[, .(
         gene,
-        start,
-        end
-    )]
-)
-gene_labels[, middle := (start + end)/2]
-
-gene_arrows <- unique(
-    genes_dt[, .(
-        gene,
-        strand,
         start,
         end,
-        color
+        show_label
     )]
 )
+gene_track_labels[, middle := (start + end)/2]
+
+gene_track_labels <- merge(
+  gene_track_labels,
+  unique(genes_track_dt[, .(gene, track, y)]),
+  by = "gene"
+)
+
+gene_arrows <- genes_track_dt[
+  ,.(start = min(start),
+    end = max(end),
+    strand = strand[1],
+    color = color[1]
+  ),by = .(gene,track)
+]
 
 gene_arrows[, arrow_x := ifelse(
     strand == "+",
@@ -489,14 +532,18 @@ gene_arrows[, arrow_dir := ifelse(
     -1
 )]
 
-gene_arrows[, y := gene_track_y]
-#-------------------------
-gene_box_height <- gene_height
+gene_arrows <- merge(
+  gene_arrows,
+  unique(genes_track_dt[, .(gene, track, y)]),
+  by = c("gene", "track")
+)
+
+gene_box_height <- gene_height[g]
 arrow_height <- gene_box_height*3
 arrow_ymin <- -gene_box_height
 arrow_ymax <-  gene_box_height
 
-triangle_dt <- gene_arrows[, {
+triangle_track_dt <- gene_arrows[, {
     if(strand[1] == "+"){
         data.table(
             x = c(
@@ -524,12 +571,21 @@ triangle_dt <- gene_arrows[, {
             ),color = color[1]
         )
     }
-}, by = gene]
+}, by = .(gene,track)]
+
+
+#gene_track_labels[,labels_offset:=genes_labels_offset[g]]
+gene_track_labels[, labels_offset := y - 0.35]
+
+genes_dt <- rbind(genes_dt,genes_track_dt)
+triangle_dt <- rbind(triangle_dt, triangle_track_dt)
+gene_labels <- rbind(gene_labels, gene_track_labels)
+
+}
+
 #----------------------------- BIGWIG BROWSER PLOT -----------------------------
 
-# track_labels <- bw_signal_dt[
-#   ,.(max=round(max(log_signal),2),
-#      y_offset=unique(y_offset)),by = mark]
+gene_labels <- gene_labels[show_label == TRUE]
 
 track_labels <- bw_signal_dt[
   ,.(max = round(unique(display_max),2),
@@ -540,8 +596,8 @@ track_distance <- visible_region$end-visible_region$start
 strat_track <- visible_region$start
 genes_labels_dt <- data.table(mark = genes_labels, y_offset = genes_labels_offset)
 track_labels_dt <- rbind(track_labels[,.(mark,y_offset)],genes_labels_dt)
+
 tracks_plot <- ggplot() +
-    # signal tracks
     geom_ribbon(
     data = bw_signal_dt,
     aes(
@@ -554,54 +610,7 @@ tracks_plot <- ggplot() +
     alpha = 0.9,
     color = "black",
     linewidth =0.2)+
-    scale_fill_identity() +
-    geom_rect(
-        data = genes_dt,
-        aes(
-            xmin = start,
-            xmax = end,
-            ymin = y - gene_box_height,
-            ymax = y + gene_box_height,
-            fill = color
-        ), color = "black") +
-    geom_polygon(
-    data = triangle_dt,
-    aes(
-        x = x,
-        y = y,
-        group = gene,
-        fill = color
-    ),   
-    color = "black",
-    inherit.aes = FALSE)  +
-    geom_text(data = gene_labels,
-        aes(x = middle, y = genes_labels_offset, label = gene),
-        size = gene_label_size,fontface = "bold") +
-    scale_x_continuous(limits = c(visible_region$start, visible_region$end),
-        expand = c(0,0),labels = function(x){round(x / 1e6, 2)},
-        position = "top") +
-  scale_y_continuous(limits = c(genes_labels_offset-0.5,max(track_offset)+1),
-                     expand = c(0,0),
-                     breaks = track_labels_dt$y_offset,
-                     labels = track_labels_dt$mark)+
-    theme_minimal() +
-    theme(
-        panel.grid = element_blank(),
-        axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.text.y = element_text(size = marks_label_size,
-                                   angle = 0,
-                                   hjust = 1,
-                                   face = "bold"),
-          axis.title.x = element_blank(),
-          axis.text.x = element_blank(),
-          axis.ticks.x = element_blank(),
-        plot.margin = margin(0,0,0,1),
-        panel.border = element_rect(
-            fill = NA,
-            color = "black"            
-        )
-    ) +
+    scale_fill_identity()  +
   geom_text(
     data = track_labels,
     aes(
@@ -621,7 +630,56 @@ tracks_plot <- ggplot() +
     inherit.aes = FALSE,
     size = 2,
     hjust = 0
-  )
+  ) +
+  scale_x_continuous(limits = c(visible_region$start, visible_region$end),
+                     expand = c(0,0),labels = function(x){round(x / 1e6, 2)},
+                     position = "top") +
+  scale_y_continuous(limits = c(min(c(genes_labels_offset,track_offset)),
+                                max(c(genes_labels_offset,track_offset)+0.5)),
+                     expand = c(0,0),
+                     breaks = track_labels_dt$y_offset,
+                     labels = track_labels_dt$mark) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_text(size = marks_label_size,
+                               angle = 0,
+                               hjust = 1,
+                               face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    plot.margin = margin(0,0,0,1),
+    panel.border = element_rect(
+      fill = NA,
+      color = "black"            
+    )
+  )+
+    geom_rect(
+        data = genes_dt,
+        aes(
+            xmin = start,
+            xmax = end,
+            ymin = y - gene_box_height,
+            ymax = y + gene_box_height,
+            fill = color
+        ), color = "black",linewidth = 0.2) +
+    geom_polygon(
+    data = triangle_dt,
+    aes(
+        x = x,
+        y = y,
+        group = interaction(gene, track),
+        fill = color
+    ),   
+    color = "black",
+    linewidth = 0.2,
+    inherit.aes = FALSE)  +
+    geom_text(data = gene_labels,
+        aes(x = middle, y = labels_offset, label = gene),
+        size = gene_label_size[1],fontface = "bold")
 #----------------------------- COMBINE -----------------------------------------
 final_plot <-
   plot_ls[[1]] / plot_ls[[2]] / plot_ls[[3]] /
@@ -653,4 +711,4 @@ formato <- "png" # "pdf" o "png"
   print(final_plot)
   dev.off()
 
-
+  
