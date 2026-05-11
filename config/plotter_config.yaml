@@ -23,12 +23,12 @@ hic:
   min_plot:
     - 3
     - 4
-    - NA
+    - NA #-35
 
   max_plot:
-    - 10
-    - 10
-    - NA
+    - 12
+    - 12
+    - NA #30
 
 heatmap_legends:
 
