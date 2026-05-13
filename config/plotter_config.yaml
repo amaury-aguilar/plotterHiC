@@ -22,13 +22,13 @@ hic:
 
   min_plot:
     - 3
-    - 4
-    - NA #-35
+    - 3
+    - -15
 
   max_plot:
     - 12
     - 12
-    - NA #30
+    - 15
 
 heatmap_legends:
 
@@ -110,6 +110,7 @@ marks:
     - blue3
 
   track_offset:
+    - 10
     - 9
     - 8
     - 7
@@ -118,7 +119,17 @@ marks:
     - 4
     - 3
     - 2
-    - 1
+
+  labels_offset:
+    - 10.5
+    - 9.5
+    - 8.5
+    - 7.5
+    - 6.5
+    - 5.5
+    - 4.5
+    - 3.5
+    - 2.5
 
   track_height:
     - 1 # ATACseq tracks are taller to be more visible
@@ -153,34 +164,42 @@ marks:
 genes:
   
   genes_files:
+    - /Users/amaury/toronto_CUTNTag/only_CTCF_motifs/CTCF_MA0139_MA1929_MA1930.meme/Ctcf.ATACseq/Ctcf.ATACseq.Ctcf_WT_KO.Ctcf_motifs.plus_minus.1kb_extended.bed
     - /Users/amaury/genes/Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed
     - /Users/amaury/genes/mm10.gene.track.sym.sorted.bed
 
-  offset: 
-    - 10.5
-    - 11.6
+  offset:
+    - 1.5 
+    - 11.7
+    - 12.7
 
   labels: 
+    - "CTCF Sense"
     - DEGs
     - Genes
 
   labels_offset: 
-    - 10
-    - 11
+    - 1.5
+    - 11.7
+    - 12.7
 
   height: 
+    - 0.1
     - 0.15
     - 0.03
 
   label_size: 
     - 2
+    - 2
     - 0.5
 
   show_label: 
+    - false
     - true
     - false
 
   jitter:
+    - 0.4
     - 0.4
     - 0.25  
 
@@ -199,6 +218,10 @@ plot:
   height: 15
   
   width: 10
+
+  tracks_limits:
+    - 1
+    - 13.1
 
 shared_yaxis_groups:
 

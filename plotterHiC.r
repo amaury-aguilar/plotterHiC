@@ -48,16 +48,61 @@ library(ggrepel)
 
 
 config <- yaml::read_yaml("config/plotter_config.yaml")
-var2 <- "chr11:31640000-32350000"
-locus_coordinates <- strsplit(var2, ":")
-chr <- locus_coordinates[[1]][1]
+#var2 <- "chr5:32200000-32800000"
+#var2 <- "chr11:49550000-50000000"
+#var2 <- "chr8:104000000-104800000"
+#var2 <- "chr2:32550000-32900000"
+#var2 <- "chr18:60900000-61400000"
+#var2 <- "chr16:32300000-32700000"
+#var2 <- "chr5:75500000-76500000"
+#var2 <- "chr5:75700000-76300000"
+#var2 <- "chr5:32000000-32350000"
+#var2 <- "chr2:118950000-119450000"
+#var2 <- "chr8:123550000-124050000"
+#var2 <- "chr11:106200000-107200000"
+#var2 <- "chr11:97850000-98300000"
+#var2 <- "chr9:44050000-44600000"
+#var2 <- "chr17:47350000-47750000"
+#var2 <- "chr17:40700000-41000000"
+#var2 <- "chr4:131800000-132200000"
+#var2 <- "chr4:119000000-119350000"
+# gene_locus <- "Lbr chr1:181700000-182200000"
+# gene_locus <- "Abcb10 chr8:123500000-124050000"
+# gene_locus <- "Rac2 chr15:78200000-78750000"
+#gene_locus <- "Erg chr16:95300000-95900000"
+#gene_locus <- "Nos3 chr5:24250000-24600000"
+gene_locus <- "Hba-a1 chr11:32100000-32350000"
+
+nomen <- strsplit(gene_locus, " ")[[1]][1]
+locus_coordinates <- strsplit(gene_locus, " ")[[1]][2]
+
+chr <- strsplit(locus_coordinates,":")[[1]][1]
 (chr <- gsub("chr", "", chr))
-(requested_start <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][1]))
-(requested_end <- as.numeric(strsplit(locus_coordinates[[1]][2],"-")[[1]][2]))
+start_end <- strsplit(locus_coordinates,":")[[1]][2]
+(requested_start <- as.numeric(strsplit(start_end,"-")[[1]][1]))
+(requested_end <- as.numeric(strsplit(start_end,"-")[[1]][2]))
 
 region_size <- requested_end - requested_start
 padding_fraction <- 0.333
-nomen <- "Rpl23a"
+# nomen <- "Tfrc"
+#nomen <- "Flt4"
+#nomen <- "Cdh5"
+#nomen <- "Ephb2"
+#nomen <- "Ephb4"
+#nomen <- "Eng"
+#nomen <- "Csf1r"
+#nomen <- "Tal1"
+#nomen <- "Kdr"
+#nomen <- "Dll4"
+#nomen <- "Acta1"
+#nomen <- "Pecam1"
+#nomen <- "Rpl19"
+#nomen <- "Hmbs"
+#nomen <- "Ccnd3"
+#nomen <- "Rhag"
+#nomen <- "Epb41"
+#nomen <- "Ermap"
+
 start <- requested_start - (region_size * padding_fraction)
 end <- requested_end + (region_size * padding_fraction)
 
@@ -159,7 +204,7 @@ to_polygon <- function(x, y, counts) {
 }
 # colores
 scale_colors <- function(hicName, dt, values, minimo = NA, maximo = NA) {
-    if (is.numeric(minimo) & is.numeric(maximo)) {
+    if (!is.na(minimo) && !is.na(maximo)) {
         if (values == "counts" | values == "counts_ctrl" | values == "log2" | values == "log2_ctrl") {
             scale <- scale_fill_gradientn(
                 name = as.character(paste0(hicName,"\nInteractions \n(log2)")),
@@ -183,7 +228,7 @@ scale_colors <- function(hicName, dt, values, minimo = NA, maximo = NA) {
                 values = scales::rescale(c(minimo, 1, maximo))
             )
         }
-    } else {
+    } else if (is.na(minimo) | is.na(maximo)){
         if (values == "counts" | values == "counts_ctrl" | values == "log2" | values == "log2_ctrl") {
             scale <- scale_fill_gradientn(
               as.character(paste0(hicName,"\nInteractions \n(log2)")),
@@ -192,16 +237,22 @@ scale_colors <- function(hicName, dt, values, minimo = NA, maximo = NA) {
         } else if (values == "subtraction") {
             scale <- scale_fill_gradientn(
               name = paste0(as.character("subtraction\n",hicName)), 
-                limits = c(min(dt$counts, na.rm = TRUE), max(dt$counts, na.rm = TRUE)),
+                limits = c(min(dt$counts, na.rm = TRUE),
+                           max(dt$counts, na.rm = TRUE)),
                 colours = c("blue", "white", "red"),
-                values = scales::rescale(c(min(dt$counts, na.rm = TRUE), 0, max(dt$counts, na.rm = TRUE)))
+                values = scales::rescale(c(min(dt$counts, na.rm = TRUE), 
+                                           0,
+                                           max(dt$counts, na.rm = TRUE)))
             )
         } else if (values == "ratio") {
             scale <- scale_fill_gradientn(
               name = paste0(as.character("Ratio",hicName)), 
-                limits = c(min(dt$counts, na.rm = TRUE), max(dt$counts, na.rm = TRUE)),
+                limits = c(min(dt$counts, na.rm = TRUE),
+                           max(dt$counts, na.rm = TRUE)),
                 colours = c("blue", "white", "red"),
-                values = scales::rescale(c(min(dt$counts, na.rm = TRUE), 1, max(dt$counts, na.rm = TRUE)))
+                values = scales::rescale(c(min(dt$counts, na.rm = TRUE),
+                                           1,
+                                           max(dt$counts, na.rm = TRUE)))
             )
         }
     }
@@ -347,6 +398,8 @@ for(i in seq_along(matrix_choices)){
        mat_parameters$legend_key_width[i])
 }
 
+#min(locus_map$subtraction, na.rm = TRUE)
+#max(locus_map$subtraction, na.rm = TRUE)
 plot_ls <- list()
 for(i in seq_along(matrix_choices)){
   if(i == 1){
@@ -714,13 +767,15 @@ dir.create(dir_plots)
 formato <- "png" # "pdf" o "png"
   if(formato=="png"){
     path.plot <- paste0(dir_plots,"/",nomen,".",
-                        chr,"_",start,"_",end,".",
+                        chr,"_",requested_start,"_",
+                        requested_end,".",
                         resol,".", "_bins.hicplot.png")
     device.plot <- png(path.plot,width=10,
                        height=15,units="cm",res=500)
   } else if (formato=="pdf"){
     path.plot <- paste0(dir_plots,"/",nomen,".",
-                        chr,"_",start,"_",end,".",
+                        chr,"_",requested_start,"_",
+                        requested_end,".",
                         resol,".", "_bins.hicplot.pdf")
     device.plot <- pdf(path.plot, width = 5 / 2.54, 
                        height = 10 / 2.54) 
