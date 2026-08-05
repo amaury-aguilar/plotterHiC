@@ -1,234 +1,204 @@
-# plotter_config.yaml
-# 2026-May-5
+# =============================================================================
+# plotter_config.yaml -- Ctcf_WT vs Ctcf_KO differential Hi-C
+# 2026-May-5, migrated to the ordered-tracks schema 2026-Jul-27
+#
+# ASCII only (execution locale is often C): no accents, even in comments.
+# A single non-ASCII byte silently truncates this file when parsed by Rscript.
+#
+# Usage:
+#   Rscript plotterHiC.r config/plotter_config.yaml
+#       one figure per entry in global.loci
+#
+#   Rscript plotterHiC.r config/plotter_config.yaml chr7:4000000-4900000 Tnni3
+#       single figure; the CLI region and name override global.loci
+#
+# ORDER IS DECLARATION ORDER: heatmaps follow hic.panels, tracks follow
+# tracks.list (first = top). There are no y coordinates to keep in sync; a
+# track only has a `height`, and `tracks.spacing` separates consecutive ones.
+# =============================================================================
 
-genome_reference: mm10                 # Versión del genoma
+global:
+  genome: mm10
+  resolution: 10000             # default; a file may override it in hic.files
+  padding_fraction: 0.333
+
+  loci:
+    Tnni3: chr7:4000000-4900000
+    # Lbr:     chr1:181700000-182200000
+    # Abcb10:  chr8:123500000-124050000
+    # Rac2:    chr15:78200000-78750000
+    # Erg:     chr16:95300000-95900000
+    # Nos3:    chr5:24250000-24600000
+    # Hba-a1:  chr11:32100000-32350000
+    # Myl4:    chr11:104100000-104800000
+    # Tnnc1:   chr14:30800000-31500000
+    # Nexn:    chr3:152000000-152800000
+    # Myl7:    chr11:5200000-6000000
+    # Actn2:   chr13:12000000-12800000
+
+  output:
+    dir: /Users/amaury/lastHiC_analysis/plots_rplotter
+    formato: png
+    plot_width: 10              # cm
+    plot_height: 15             # cm
+    dpi: 500
 
 hic:
-  directory: /Users/amaury/lines/mouse/endothelial_Cells/juicer/
-  ctrl_file: Ctcf_WT.allReps.896MvP.hic
-  file: Ctcf_KO.allReps.896MvP.hic
+  norm: KR
 
-  names:
-    - Ctcf_WT
-    - Ctcf_KO
-    - Ctcf-KO - Ctcf-WT
-
-  resolution: 5000
-
-  matrix_choices:
-    - log2_ctrl
-    - log2
-    - subtraction
-
-  min_plot:
-    - 3
-    - 3
-    - -15
-
-  max_plot:
-    - 12
-    - 12
-    - 15
-
-heatmap_legends:
-
-  show:
-    - true
-    - true
-    - true
-
-  position_x:
-    - -0.08
-    - -0.08
-    - -0.08
-
-  position_y:
-    - 0.5
-    - 0.5
-    - 0.5
-
-  direction:
-    - vertical
-    - vertical
-    - vertical
-
-  title_size:
-    - 5
-    - 5
-    - 5
-
-  text_size:
-    - 5
-    - 5
-    - 5
-
-  key_height:
-    - 7
-    - 7
-    - 7
-
-  key_width:
-    - 5
-    - 5
-    - 5
-
-marks:
-
-  names:
-    - ATAC_WT
-    - ATAC_KO
-    - RNAseq_WT
-    - RNAseq_KO
-    - H3K4me3
-    - H3K4me1
-    - H3K27ac
-    - H3K27me3
-    - CTCF
-
+  # A bare path inherits global.resolution and hic.norm. Use a map instead to
+  # give one file its own settings, e.g.
+  #   Ctcf_KO: { file: /path/x.hic, resolution: 5000, norm: SCALE }
   files:
-    - /Users/amaury/toronto_CUTNTag/bigwigs_ATAC_hisat2/ys211.ATACseq.WT.trim_Ad_3pb.h2.0_120pb.scaleFact.bw
+    Ctcf_WT: /Users/amaury/lines/mouse/endothelial_Cells/juicer/Ctcf_WT.allReps.896MvP.hic
+    Ctcf_KO: /Users/amaury/lines/mouse/endothelial_Cells/juicer/Ctcf_KO.allReps.896MvP.hic
 
-    - /Users/amaury/toronto_CUTNTag/bigwigs_ATAC_hisat2/ys300.ATACseq.Ctcf_KO.trim_Ad_3pb.h2.0_120pb.scaleFact.bw
+  defaults:
+    height: 1
 
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_WT.trim.paired.star.scaleFact.bw
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_KO.trim.single.star.scaleFact.bw
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me1.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27ac.Ctcf_WT.ys204_ys240.trim_Ad_3pb.h2.scaleFact.bw
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
-    - /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/Ctcf.Ctcf_WT.ys115_ys200.trim_Ad_3pb.h2.scaleFact.bw
+  legend_defaults:
+    show: true
+    position: [-0.08, 0.5]
+    direction: vertical
+    title_size: 5
+    text_size: 5
+    key_height: 7
+    key_width: 5
 
-  colors:
-    - black
-    - black
-    - pink4
-    - pink4
-    - orange1
-    - yellow4
-    - green4
-    - red3
-    - blue3
+  # A comparison is read as "hic <op> vs", so the third panel is KO - WT.
+  panels:
+    - { name: Ctcf_WT,             hic: Ctcf_WT,                 matrix: log2,        min: 3,   max: 12 }
+    - { name: Ctcf_KO,             hic: Ctcf_KO,                 matrix: log2,        min: 3,   max: 12 }
+    - { name: "Ctcf-KO - Ctcf-WT", hic: Ctcf_KO, vs: Ctcf_WT,    matrix: subtraction, min: -40, max: 30 }
 
-  track_offset:
-    - 10
-    - 9
-    - 8
-    - 7
-    - 6
-    - 5
-    - 4
-    - 3
-    - 2
-
-  labels_offset:
-    - 10.5
-    - 9.5
-    - 8.5
-    - 7.5
-    - 6.5
-    - 5.5
-    - 4.5
-    - 3.5
-    - 2.5
-
-  track_height:
-    - 1 # ATACseq tracks are taller to be more visible
-    - 1 # ATACseq tracks are taller to be more visible
-    - 4 # RNAseq tracks are shorter to avoid dominating the plot
-    - 4 # RNAseq tracks are shorter to avoid dominating the plot
-    - 8 # H3K4me3
-    - 30 # H3K4me1
-    - 100 # H3K27ac
-    - 20 # H3K27me3
-    - 70 # CTCF
-
+tracks:
+  panel_height: 2.5             # the track panel vs one heatmap
+  spacing: 0.15                 # gap between consecutive tracks
   label_size: 6
 
-  bin_size:
-    - 400
-    - 400
-    - 300
-    - 300
-    - 300
-    - 300
-    - 300
-    - 300
-    - 400
+  defaults:
+    mark:
+      height: 1
+      n_bins: 300
+      crop: true
+      color: grey50
+      alpha: 0.9
+      line_color: black
+      line_width: 0.2
+      show_scale: true
 
-  crop:
-    - true
+    annotation:
+      height: 1
+      style: box
+      feature_height: 0.25
+      direction: triangle
+      arrow_frac: 0.006
+      line_color: black
+      line_width: 0.2
+      labels:
+        enabled: false
+        size: 2
+        fontface: bold
+        repel: true
+        dedup: true
 
-  max_height:
-    - 0.95
+  # ---------------------------------------------------------------------------
+  # Top to bottom. `signal_scale` multiplies log10(1 + signal); 'auto' would
+  # instead rescale each track to fill its own band at every locus.
+  # ---------------------------------------------------------------------------
+  list:
 
-genes:
-  
-  genes_files:
-    - /Users/amaury/toronto_CUTNTag/only_CTCF_motifs/CTCF_MA0139_MA1929_MA1930.meme/Ctcf.ATACseq/Ctcf.ATACseq.Ctcf_WT_KO.Ctcf_motifs.plus_minus.1kb_extended.bed
-    - /Users/amaury/genes/Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed
-    - /Users/amaury/genes/mm10.gene.track.sym.sorted.bed
+    Genes:
+      type: annotation
+      file: /Users/amaury/genes/mm10.gene.track.sym.sorted.bed
+      height: 0.6
+      feature_height: 0.06
+      jitter: 0.5
 
-  offset:
-    - 1.5 
-    - 11.7
-    - 12.7
+    DEGs:
+      type: annotation
+      file: /Users/amaury/genes/Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed
+      height: 1
+      feature_height: 0.3
+      jitter: 0.8
+      labels:
+        enabled: true
+        size: 2
+        max_n: 20
+        min_width_frac: 0
 
-  labels: 
-    - "CTCF Sense"
-    - DEGs
-    - Genes
+    ATAC_WT:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_ATAC_hisat2/ys211.ATACseq.WT.trim_Ad_3pb.h2.0_120pb.scaleFact.bw
+      color: black
+      signal_scale: 1           # ATACseq is tall enough on its own
+      n_bins: 400
 
-  labels_offset: 
-    - 1.5
-    - 11.7
-    - 12.7
+    ATAC_KO:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_ATAC_hisat2/ys300.ATACseq.Ctcf_KO.trim_Ad_3pb.h2.0_120pb.scaleFact.bw
+      color: black
+      signal_scale: 1
+      n_bins: 400
 
-  height: 
-    - 0.1
-    - 0.15
-    - 0.03
+    RNAseq_WT:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_WT.trim.paired.star.scaleFact.bw
+      color: pink4
+      signal_scale: 4           # kept short so it does not dominate the plot
 
-  label_size: 
-    - 2
-    - 2
-    - 0.5
+    RNAseq_KO:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_KO.trim.single.star.scaleFact.bw
+      color: pink4
+      signal_scale: 4
 
-  show_label: 
-    - false
-    - true
-    - false
+    H3K4me3:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+      color: orange1
+      signal_scale: 8
 
-  jitter:
-    - 0.4
-    - 0.4
-    - 0.25  
+    H3K4me1:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me1.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+      color: yellow4
+      signal_scale: 30
+
+    H3K27ac:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27ac.Ctcf_WT.ys204_ys240.trim_Ad_3pb.h2.scaleFact.bw
+      color: green4
+      signal_scale: 100
+
+    H3K27me3:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw
+      color: red3
+      signal_scale: 20
+
+    CTCF:
+      type: mark
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/Ctcf.Ctcf_WT.ys115_ys200.trim_Ad_3pb.h2.scaleFact.bw
+      color: blue3
+      signal_scale: 70
+      n_bins: 400
+
+    CTCF Sense:
+      type: annotation
+      file: /Users/amaury/toronto_CUTNTag/only_CTCF_motifs/CTCF_MA0139_MA1929_MA1930.meme/Ctcf.ATACseq/Ctcf.ATACseq.Ctcf_WT_KO.Ctcf_motifs.plus_minus.1kb_extended.bed
+      height: 1
+      feature_height: 0.2
+      jitter: 0.8
+
+# Marks listed together share one y scale, so their heights are comparable.
+shared_yaxis_groups:
+  ATACseq: [ATAC_WT, ATAC_KO]
+  RNAseq:  [RNAseq_WT, RNAseq_KO]
 
 plot:
-
-  proportions:
-    - 1
-    - 1
-    - 1
-    - 2.5
-
-  directory: /Users/amaury/lastHiC_analysis/plots_rplotter
-
-  format: png
-
-  height: 15
-  
-  width: 10
-
-  tracks_limits:
-    - 1
-    - 13.1
-
-shared_yaxis_groups:
-
-  ATACseq:
-    - ATAC_WT
-    - ATAC_KO
-
-  RNAseq:
-    - RNAseq_WT
-    - RNAseq_KO
+  x_axis:
+    divide: 1000000             # axis labels in Mb
+  # crop:                       # how much of the rotated square to keep
+  #   x: [0.2, 0.8]
+  #   y: 0.7
