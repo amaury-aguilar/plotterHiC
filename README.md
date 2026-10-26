@@ -257,13 +257,62 @@ Each track owns a horizontal **band**. Three knobs, and nothing else, control th
 
 #### `type: mark` — bigwig signal
 
-`signal_scale: auto` rescales the track to fill its band at every locus, which is what lets bigwigs from different assays sit side by side; a number fixes the multiplier instead. Also: `n_bins`, `crop`, `color`, `alpha`, `line_color`, `line_width`, `show_scale`.
+`signal_scale: auto` rescales the track to fill its band at every locus, which is what lets bigwigs from different assays sit side by side; a number fixes the multiplier instead. Also: `crop`, `color`, `alpha`, `line_color`, `line_width`, `show_scale`.
+
+**The binning decides what a peak looks like, and no amount of `signal_scale` can undo it.** A bigwig has one value per base; the track has one value per bin. Three options say how you get from the first to the second, and they matter more than everything else on this list put together.
+
+| option | default | what it does |
+| --- | --- | --- |
+| `n_bins` | `auto` | a fixed **count** of bins across the window, so the bin **width** changes with the locus. `auto` gives one bin per pixel of the output figure. |
+| `bin_size` | — | a fixed bin **width** in bp, so the bin **count** changes with the locus. |
+| `windowing` | `mean` | how the bases in a bin become one value: `mean` is the per-base average, `max` keeps the tallest value in the bin. |
+
+`n_bins` and `bin_size` answer the same question two ways, so a track sets one or the other; setting both is an error.
+
+A fixed `n_bins` is the usual reason a track looks noisier here than in IGV. A CTCF site is a few hundred bp, so `n_bins: 400` over 5 Mb — a 12.5 kb bin — spreads each summit over 40x its own width and averages it into the local background. The dynamic range is gone before `signal_scale` is reached, which is why `auto` cannot rescue it: `auto` divides the band by the maximum, so a background sitting at a third of that maximum fills a third of the band, and the track reads as a slab. Measured on chr15:55-60 Mb, summit-to-background for the three CTCF ChIPs:
+
+| bin width | mESC | NPC | CN |
+| --- | --- | --- | --- |
+| 12.5 kb (`n_bins: 400` over 5 Mb) | 13.7 | 3.9 | **1.7** |
+| 2 kb | 57.6 | 13.4 | 4.1 |
+| 200 bp (`bin_size: 200`) | 328.3 | 63.7 | **18.3** |
+
+**Which to use.** `bin_size` when the mark is sharp and the resolution is the point — it is the same at every locus, so a `signal_scale` tuned once stays tuned. `n_bins` when the window is wide and the cost is the point: `bin_size: 200` over a whole chromosome is hundreds of thousands of bins, far more than the figure has pixels, and it is slow to draw for detail no one can see. `auto` is the sensible default for both, since one bin per pixel is the finest binning that can actually be seen.
+
+**Re-tune `signal_scale` whenever the binning changes.** Finer bins mean taller peaks — a number that filled the band at 12.5 kb will run off the panel at 200 bp.
+
+**The bin count is capped at one bin per pixel of the figure**, so `bin_size` cannot ask for detail the output has no room for. A whole chromosome at 200 bp is half a million bins per track, and the cost is not the binning but the rasterizer: that figure takes 14 s at one bin per pixel and had not finished after 13 minutes uncapped. The cap is exact rather than approximate — the mean of equal-width means is the overall mean and the max of maxes is the overall max, so a capped `bin_size` draws pixel-for-pixel what the equivalent `n_bins` would. It prints what it drew, because `signal_scale` is tuned against a bin width.
+
+`windowing: max` is the lever for a low signal-to-noise sample whose bins are a few times wider than its peaks. It keeps the summit whatever the bin size, at the cost of lifting isolated noise spikes too, so it is worth it on a weak ChIP and usually not on a broad mark. It does **not** rescue a whole-chromosome view: at tens of kb per bin nearly every bin contains a summit, so `max` is high everywhere and the track saturates into a slab, exactly as `mean` flattens into one. At that width there are no peaks to draw.
 
 Marks named together under `shared_yaxis_groups` share one y scale, so their heights are comparable.
 
 #### `type: structure` — TADs and loops from a bedpe
 
 `style: arc` draws a semicircle between anchor midpoints (loops); `style: domain` draws a bar spanning the domain (TADs). Filter with `max_n`, `rank_by` (`length` | `score` | `random`), `rank_desc`, `min_span`, `max_span`. Set `add_chr: true` when the bedpe stores `2` but the genome needs `chr2`. Non-standard column layouts are handled with `columns` and `select`.
+
+##### Nested domains
+
+A TAD caller emits sub-TADs inside TADs, and on one line they draw on top of each other. `layout` gives the levels room:
+
+| `layout` | Behaviour |
+|---|---|
+| `single` | every bar on one line; nested domains hide each other |
+| `packed` | rows — no two **overlapping** bars share a row. Compact, the "squished" look of a genome browser |
+| `nested` | row = **nesting depth** — outermost on top, a child always one row below its parent |
+
+`max_rows` caps the rows (deeper levels pile onto the last one), and `row_gap_frac` is the minimum gap between two bars sharing a row under `packed`. Bar height is relative to the **row**, so extra rows make the bars thinner instead of overflowing the band.
+
+`alpha_by` gives the levels contrast instead of room, and works for arcs as well as bars:
+
+```yaml
+alpha_by: depth,          # none | depth | score | span
+alpha_range: [0.2, 0.9]   # [outermost, deepest] -- write it backwards to invert
+```
+
+`depth` is anchored, not stretched: depth 0 always takes the first end of the range, so an outermost TAD looks the same in a locus nested three deep as in one nested six deep. `score` and `span` have no natural zero, so there the visible minimum takes that end. Depth is measured on everything reaching the window, before `max_n` — dropping a parent does not promote its children. With `alpha_by` on, the outline fades with the fill, so an outline-only track shows depth too.
+
+A filled arc takes the same shading, which is how nested TADs drawn as arcs darken with depth. Deeper arcs are drawn last, so a small nested one is never buried under the wide one containing it.
 
 #### `type: annotation` — any BED
 
@@ -278,6 +327,19 @@ Marks named together under `shared_yaxis_groups` share one y scale, so their hei
 | `jitter` | random vertical scatter; shows density, but separation is luck |
 
 With `packed`, feature height is relative to the **row**, so adding rows makes each glyph thinner rather than overflowing the band. `max_rows` caps them.
+
+##### Features too small to see
+
+A 2 kb gene in a 1.5 Mb view is a third of a pixel wide, so it is simply absent from the figure. Two settings answer that, and they compose:
+
+| Setting | What it does |
+|---|---|
+| `arrow_frac` | length of the arrowhead under `direction: triangle`, as a fraction of the **visible window** — so the head is the same size whatever the gene's length, and a short gene still gets a full-sized one |
+| `min_feature_frac` / `min_feature_width` | floor on the drawn width of the **whole feature**, as a fraction of the window or in bp; the larger of the two wins. A narrower gene is drawn zoomed about its own midpoint until it reaches the floor, exons, CDS and arrowhead mapped through the same factor |
+
+`min_exon_frac` is the older, narrower knob: it grows tiny **exons** and leaves the gene's span alone. That does not rescue a gene whose whole model is sub-pixel, which is what `min_feature_frac` is for.
+
+`min_feature_frac` is the one place the drawing stops being to scale, so it is off by default and anchored on the midpoint: the feature stays exactly where it belongs and only its span is exaggerated. Keep it just big enough to see. Packing reads the drawn extent, so blown-up neighbours are still kept off each other's row, and label selection reads the true widths — a gene does not become worth naming because it was drawn wider.
 
 #### Gene labels
 
@@ -299,13 +361,17 @@ labels: {
   exclude: [],            # never label these
 
   # WHERE the labels go
-  reserve: 0.45,          # keep the top 45% of the band clear for labels
+  anchor: band,           # band | row
+  side: top,              # top | bottom
+  reserve: 0.45,          # keep 45% of the band clear for labels (anchor: band)
   gap: 0.4,               # floor: minimum clearance from the genes
-  ylim: 0.9,              # how much of the remaining strip repel may use
-  offset: 0,              # slide the whole label zone (band-half fraction)
+  ylim: 0.9,              # how much of its zone repel may use
+  offset: 0,              # slide the label zone (band-half fraction)
   jitter: 0,              # extra random scatter within the zone
   repel: true,
   direction: both,        # both | x | y
+  force: 15,              # how hard labels shove EACH OTHER apart
+  force_pull: 1,          # how hard each is pulled back to its own gene
   segment_size: 0.2,      # leader line to the feature; 0 removes it
   box_padding: 0.2
 }
@@ -313,17 +379,30 @@ labels: {
 
 **Which features.** `dedup` runs before `include`, so a gene named in `include` is still labelled once rather than once per transcript. `include` bypasses the size filters and the `max_n` cap; everything else competes for the remaining slots by `rank_by`.
 
-**Where they go.** This is what keeps labels off the genes:
+**Where they go.** Every label is nudged into a **zone** and repulsion may then move it *within* that zone. Choosing the zone is what decides how far a name ends up from its gene — the repulsion forces only redistribute labels inside it.
+
+| `anchor` | Zones |
+|---|---|
+| `band` | **One** strip for the whole track, at one end of the band. Features and labels get disjoint zones, so no label can ever land on a gene. The cost: the strip is at one *end* of the band, so with packed rows the far row's labels sit most of a band away from what they name, and no force can pull them closer — the strip is exactly where they were told to be. |
+| `row` | **One zone per row** — each label rides just clear of its own feature, whichever row that is. Short leader lines everywhere; the cost is that a label may now sit over a feature of another row. |
+
+`side: top | bottom` picks which end of the band the strip is taken from (`anchor: band`), or which side of the feature the label rises to (`anchor: row`).
+
+Under `anchor: row` no strip is taken at all, so `reserve` does not apply and the genes keep the whole band. Row zones stay disjoint even at `ylim: 1`, so a label can never cross into the row above or below.
+
+The rest tunes placement inside the chosen zone:
 
 | Setting | Effect |
 |---|---|
-| `reserve` | Splits the band: features pack into the bottom `1 - reserve`, labels live in the top `reserve`. The two zones are disjoint, so **no label can land on a gene**, however crowded the locus. `0` disables the split and labels share the band with the features. |
-| `gap` | Raises the **floor** of the label zone, as a fraction of the reserved strip. This is the knob for "some labels end up stuck to the genes": repulsion is free to place a label anywhere it is allowed, so without a floor the crowded ones settle right on the features. |
-| `ylim` | Width of the allowed interval. Smaller = more uniform label height, but less room to stagger and more crowding sideways. |
-| `offset` | Slides the whole zone, in fractions of the band half-height. Useful with `reserve: 0` or to push labels out of the band entirely. |
+| `reserve` | `anchor: band` only. Splits the band: features pack into `1 - reserve`, labels live in the `reserve` strip. `0` disables the split and labels share the band with the features. The strip is only taken when there *are* labels to put in it: with `enabled: false`, or at a locus where every candidate was filtered out, the genes get the whole band rather than leaving an empty strip beside them. |
+| `gap` | Clearance from the features — the **floor** of the zone. A fraction of the strip under `anchor: band`, of the row half-height under `anchor: row`. This is the knob for "some labels end up stuck to the genes": repulsion is free to place a label anywhere it is allowed, so without a floor the crowded ones settle right on the features. |
+| `ylim` | How much of its zone repulsion may use, `1` = all of it. Smaller = more uniform label height, but less room to stagger and more crowding sideways. |
+| `offset` | Slides the zone, in fractions of the band half-height. Useful with `reserve: 0` or to push labels out of the band entirely. |
 | `direction` | `x` keeps every label at one height and spreads them sideways; `y` stacks them; `both` lets repulsion use either axis. |
 
 Rule of thumb: for even, tidy heights raise `gap` and lower `ylim`; to let crowded labels stagger so they all fit, lower `gap` and raise `ylim`.
+
+**How far a label ends up from its gene** is set by the *zone*, not by the forces. `ylim` is a hard boundary, so neither `force` nor `force_pull` can move a label out of the strip it was assigned — raising `force_pull` on a `band` layout with two packed rows changes nothing, because the label is already exactly where the strip put it. To close the distance, change the zone: `anchor: row` is the direct answer, and failing that lower `reserve` and `gap`. The forces then settle collisions inside the room that leaves — `force` is how hard labels shove each other apart, `force_pull` how hard each is pulled back onto its own gene.
 
 The leader line always points at the feature itself — the label is moved with a nudge while its anchor stays on the gene, so a line never aims at empty space.
 

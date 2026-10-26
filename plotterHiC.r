@@ -462,6 +462,62 @@ hic_resolution <- function(hic_name, locus_res) {
 }
 hic_files <- lapply(hic_registry, `[[`, "file")   # name -> path, for validation
 
+# =============================================================================
+# ORDER OVERRIDE
+# =============================================================================
+# Declaration order IS the layout: the first track written is the top band, the
+# first panel the top heatmap, and nothing in the config carries a coordinate.
+# That stays true -- `plot.order` only exists so that CHANGING the order does
+# not mean moving the blocks. A track entry is thirty lines of settings and
+# comments; dragging it three places up to put it under the heatmaps is exactly
+# the kind of edit that loses a brace.
+#
+# So `plot.order` names entries, in the order they should be drawn:
+#
+#   plot: { order: { tracks: [CTCF, ATAC_WT, TADs], panels: [subtraction] } }
+#
+# The list may be partial: what it names comes first, in that order, and
+# everything else follows in declaration order. Bringing one entry to the top
+# is therefore a one-line edit, and the entries not mentioned keep the relative
+# order the file already gives them.
+#
+# A name that belongs to a DISABLED entry is skipped rather than refused --
+# turning a track off must never force a second edit somewhere else -- but a
+# name that belongs to nothing at all is a typo, and stops the run.
+apply_order <- function(items, handles, want, all_handles, what) {
+  want <- as.character(unlist(want %||% list()))
+  if (!length(want)) return(items)
+
+  dup <- unique(want[duplicated(want)])
+  if (length(dup)) {
+    stop(what, ": '", paste(dup, collapse = ", "), "' listed more than once",
+         call. = FALSE)
+  }
+  bad <- setdiff(want, all_handles)
+  if (length(bad)) {
+    stop(what, ": '", paste(bad, collapse = ", "), "' is not defined. Use one of: ",
+         paste(all_handles, collapse = ", "), call. = FALSE)
+  }
+  amb <- intersect(want, handles[duplicated(handles)])
+  if (length(amb)) {
+    stop(what, ": '", paste(amb, collapse = ", "), "' matches more than one entry;",
+         " give them distinct names before ordering by name", call. = FALSE)
+  }
+
+  idx <- match(want, handles)          # NA = declared but disabled: nothing to place
+  idx <- idx[!is.na(idx)]
+  items[c(idx, setdiff(seq_along(items), idx))]
+}
+
+plot_order <- cfg$plot$order %||% list()
+if (length(plot_order)) {
+  bad <- setdiff(names(plot_order), c("tracks", "panels"))
+  if (length(bad)) {
+    stop("plot.order: '", paste(bad, collapse = ", "), "' is not valid. Use one of: ",
+         "tracks, panels", call. = FALSE)
+  }
+}
+
 # ---- hic panels: declaration order = top to bottom -------------------------
 legend_defaults <- cfg$hic$legend_defaults %||% list()
 # Figure-wide panel settings: anything valid on a panel can go here and applies
@@ -489,11 +545,23 @@ panel_on <- vapply(seq_along(panels_cfg), function(i) {
   ef <- merge_settings(panels_cfg[[i]], panel_defaults$flat, panel_presets, what)
   as_flag(ef$enabled, what)
 }, logical(1))
+# What a panel answers to in `plot.order.panels`: its own `name`, or -- for the
+# panel left unnamed because its title is drawn by its legend -- its matrix
+# type, so `panels: [subtraction]` reaches it without inventing a name for it.
+panel_handles <- vapply(seq_along(panels_cfg), function(i) {
+  ef <- merge_settings(panels_cfg[[i]], panel_defaults$flat, panel_presets,
+                       paste0("hic.panels[[", i, "]]"))
+  nm <- as.character(ef$name %||% "")
+  if (nzchar(nm)) nm else as.character(ef$matrix %||% "log2")
+}, character(1))
+
 panels_cfg <- panels_cfg[panel_on]
 if (!length(panels_cfg)) {
   stop("every entry of hic.panels has 'enabled: false' in ", cfg_path,
        ": at least one panel must be on", call. = FALSE)
 }
+panels_cfg <- apply_order(panels_cfg, panel_handles[panel_on], plot_order$panels,
+                          panel_handles, "plot.order.panels")
 
 # Default legend title per matrix type; a panel may override it with `title:`.
 default_panel_title <- function(name, mtype) {
@@ -661,6 +729,7 @@ track_on <- vapply(seq_along(track_list), function(i) {
   ef   <- merge_settings(e, d, track_presets, what)
   as_flag(ef$enabled, what)
 }, logical(1))
+track_names_all <- names(track_list)     # for plot.order, disabled ones included
 track_list <- track_list[track_on]
 if (!length(track_list)) {
   stop("every entry of tracks.list has 'enabled: false' in ", cfg_path,
@@ -698,17 +767,54 @@ tracks <- lapply(names(track_list), function(tn) {
     # log10(1 + signal) directly, in band-height units.
     ss <- opt(e, d, "signal_scale", "auto")
     ss <- if (is.character(ss) && tolower(ss) == "auto") NA_real_ else as.numeric(ss)
+
+    # n_bins and bin_size answer the same question two ways (see mark_n_bins),
+    # so one track cannot use both -- but the test is on what THIS block
+    # writes, not on the flattened settings: a `tracks.defaults` that sets
+    # n_bins for every mark must not stop one track from asking for a bin_size.
+    # Whichever the entry itself names wins, and cancels the other's default.
+    own_nb <- has_key(raw, "n_bins")
+    own_bs <- has_key(raw, "bin_size")
+    if (own_nb && own_bs) {
+      stop("tracks.list.", tn, ": set either n_bins (a fixed count of bins) or ",
+           "bin_size (a fixed bin width in bp), not both", call. = FALSE)
+    }
     c(base, list(
       color      = as.character(opt(e, d, "color", "grey50")),
       alpha      = as.numeric(opt(e, d, "alpha", 0.9)),
       line_color = as.character(opt(e, d, "line_color", "black")),
       line_width = as.numeric(opt(e, d, "line_width", 0.2)),
       signal_scale = ss,
-      n_bins     = as.numeric(opt(e, d, "n_bins", 400)),
+      # HOW FINELY THE BIGWIG IS BINNED -- three ways to say it, and at most
+      # one of them per track. See mark_n_bins().
+      #   n_bins: 400     a fixed COUNT across the window, whatever its width
+      #   bin_size: 200   a fixed WIDTH in bp, however many that takes
+      #   n_bins: auto    one bin per output pixel (the default)
+      n_bins     = { nb <- if (own_bs) "auto" else opt(e, d, "n_bins", "auto")
+                     if (is.character(nb) && tolower(nb) == "auto") NA_real_
+                     else as.numeric(nb) },
+      bin_size   = { bs <- if (own_nb) NA_real_ else num_or_na(opt(e, d, "bin_size", NA))
+                     if (!is.na(bs) && bs <= 0) {
+                       stop("tracks.list.", tn, ": bin_size must be a positive ",
+                            "number of bp, got ", bs, call. = FALSE)
+                     }
+                     bs },
+      # how the bases inside one bin are reduced to the one value drawn --
+      # a genome browser's "windowing function". See bin_marks().
+      windowing  = { wf <- tolower(as.character(opt(e, d, "windowing", "mean")))
+                     if (!wf %in% c("mean", "max")) {
+                       stop("tracks.list.", tn, ": windowing must be 'mean' or 'max', got '",
+                            wf, "'", call. = FALSE)
+                     }
+                     wf },
       crop       = as.logical(opt(e, d, "crop", TRUE)),
       show_scale = as.logical(opt(e, d, "show_scale", TRUE))))
 
   } else if (ty == "structure") {
+    # height_span: the anchor span (bp) whose arc exactly fills the band.
+    # "auto" (the default) uses the widest structure in view instead.
+    hs <- opt(e, d, "height_span", "auto")
+    hs <- if (is.character(hs) && tolower(hs) == "auto") 0 else as.numeric(hs)
     c(base, list(
       # arc    = semicircle joining the two anchor midpoints (loops)
       # domain = filled bar spanning the whole domain        (TADs)
@@ -740,9 +846,52 @@ tracks <- lapply(names(track_list), function(tn) {
       line_width = as.numeric(opt(e, d, "line_width", 0.4)),
       line_type  = as.character(opt(e, d, "line_type", "solid")),
       arc_resolution = as.numeric(opt(e, d, "arc_resolution", 60)),
-      # keep only structures whose anchor span is in [min_span, max_span]; 0 = off
+      # HOW TALL AN ARC IS (style: arc). An arc is drawn as a half ELLIPSE, so
+      # its width and its height are set independently: the feet always sit on
+      # the anchors, and the apex is whatever this mapping asks for.
+      #
+      #   span  height is proportional to the loop's length. Faithful, and
+      #         unusable as soon as one locus mixes 20 kb loops with 5 Mb ones:
+      #         the long one takes the band and the local ones are a hairline.
+      #   log   height is proportional to log(length), so a 200x range of loop
+      #         lengths still spreads over the band. This is what keeps the
+      #         local loops readable next to a long-range one.
+      #   rank  height by ORDER of length, evenly spread over the band: every
+      #         arc is distinguishable whatever the lengths are, at the cost of
+      #         the height no longer meaning a length. Pair it with height_min.
+      height_by = as.character(opt(e, d, "height_by", "span")),
+      # The span drawn one full band tall -- in bp (height_span) or as a
+      # fraction of the visible window (height_span_frac), the larger winning.
+      # auto/0 = the widest structure in view, so nothing exceeds the band.
+      height_span      = hs,
+      height_span_frac = as.numeric(opt(e, d, "height_span_frac", 0)),
+      # log only: the span at the BOTTOM of the scale. auto/0 = the shortest in
+      # view. Raise it to stop one unusually short loop from setting the floor.
+      height_span_min  = as.numeric(opt(e, d, "height_span_min", 0)),
+      # The mapping is rescaled into [height_min, height_max], both fractions of
+      # the band: the floor keeps the shortest arc off the baseline, and the
+      # ceiling keeps the tallest one from touching the divider drawn at the top
+      # of the track, where it reads as part of the frame rather than as a loop.
+      height_min = as.numeric(opt(e, d, "height_min", 0)),
+      height_max = as.numeric(opt(e, d, "height_max", 1)),
+      # Safety net for `height_by: span` with an explicit height_span, the one
+      # combination that can ask for an arc taller than its band: TRUE cuts it
+      # flat at the top, FALSE lets it draw over the tracks above. It does
+      # nothing under log/rank, where the mapping cannot exceed the band --
+      # and cutting is ugly by nature: two cut arcs share one ceiling and read
+      # as a single horizontal line notched wherever they meet.
+      crop = as.logical(opt(e, d, "crop", TRUE)),
+      # Keep only structures whose anchor span is in [min_span, max_span], in bp
+      # or as a fraction of the visible window; the larger of each pair wins,
+      # 0 = off. The _frac form is what travels between loci of different sizes:
+      # a loop many times longer than the window has its apex flat across the
+      # whole panel and no anchor to show for it, so it reads as a horizontal
+      # rule over the track however its height was computed. That is a job for
+      # a filter, not for the height mapping.
       min_span  = as.numeric(opt(e, d, "min_span", 0)),
       max_span  = as.numeric(opt(e, d, "max_span", 0)),
+      min_span_frac = as.numeric(opt(e, d, "min_span_frac", 0)),
+      max_span_frac = as.numeric(opt(e, d, "max_span_frac", 0)),
       # cap how many are drawn per locus; 0 = draw all
       max_n     = as.numeric(opt(e, d, "max_n", 0)),
       rank_by   = as.character(opt(e, d, "rank_by", "length")),
@@ -758,8 +907,29 @@ tracks <- lapply(names(track_list), function(tn) {
       # half-height of a feature, as a fraction of the band's half-height:
       # 1 fills the band, 0.2 is a thin bar
       feature_height = as.numeric(opt(e, d, "feature_height", 0.25)),
+      # NON-STANDARD BED: which columns to read, and what they mean. Naming
+      # them bypasses rtracklayer, which reads a BED by position and meaning and
+      # chokes on a file that keeps its own columns past the sixth.
+      #   select:  [1, 2, 3, 4, 5, 6]
+      #   columns: [chr, start, end, name, score, strand]
+      select  = opt(e, d, "select"),
+      columns = opt(e, d, "columns"),
       # NA = take the color from the BED's itemRgb column
       color      = as.character(opt(e, d, "color", NA_character_)),
+      # ...or drop both and colour each feature by a NUMBER instead:
+      #   none   flat `color`, else the BED's itemRgb, else black
+      #   score  the BED's score column (5) through the diverging ramp in
+      #          `color_scale`. A DEG bed stores a signed log2FC there, so the
+      #          track then shows direction and magnitude rather than class.
+      # `score` overrides `color` and itemRgb -- a flat colour and a gradient
+      # cannot both be honoured, and the one the config asked for wins.
+      color_by    = { cb <- tolower(as.character(opt(e, d, "color_by", "none")))
+                      if (!cb %in% c("none", "score")) {
+                        stop("tracks.list.", tn, ": 'color_by: ", cb, "' is not",
+                             " valid. Use one of: none, score", call. = FALSE)
+                      }
+                      cb },
+      color_scale = opt_block(e, d, "color_scale"),
       line_color = as.character(opt(e, d, "line_color", "black")),
       line_width = as.numeric(opt(e, d, "line_width", 0.2)),
       utr_thinner = as.logical(opt(e, d, "utr_thinner", TRUE)),
@@ -767,9 +937,20 @@ tracks <- lapply(names(track_list), function(tn) {
       # grow features narrower than this fraction of the window so single-bp
       # exons stay visible; position and overall span are preserved
       min_exon_frac = as.numeric(opt(e, d, "min_exon_frac", 0)),
+      # FLOOR ON THE WHOLE FEATURE: a gene narrower than this is drawn zoomed
+      # about its own midpoint until it reaches the floor, exons and all. In bp
+      # (min_feature_width) or as a fraction of the visible window
+      # (min_feature_frac); the larger of the two wins. 0 = off.
+      # Unlike min_exon_frac, this DOES stretch the drawn span of the gene: a
+      # 2 kb gene in a 1.5 Mb view is a hairline otherwise.
+      min_feature_frac  = as.numeric(opt(e, d, "min_feature_frac", 0)),
+      min_feature_width = as.numeric(opt(e, d, "min_feature_width", 0)),
       # chevrons = repeated ">" marks along the body; triangle = one arrowhead
       direction  = as.character(opt(e, d, "direction", "triangle")),
       chevron_n  = as.numeric(opt(e, d, "chevron_n", 6)),
+      # Length of the arrowhead, as a fraction of the VISIBLE WINDOW -- so it is
+      # the same size whatever the gene's length, and a short gene still gets a
+      # full-sized head. Raise it to make small features carry the track.
       arrow_frac = as.numeric(opt(e, d, "arrow_frac", 0.006)),
       # How overlapping features are spread vertically inside the band:
       #   single  every feature on one line (overlaps just draw on top)
@@ -791,8 +972,12 @@ tracks <- lapply(names(track_list), function(tn) {
   }
 })
 names(tracks) <- vapply(tracks, function(t) t$name, character(1))
+# The one place the track order is decided, so the bands below and everything
+# that reads them follow from it.
+tracks <- apply_order(tracks, names(tracks), plot_order$tracks,
+                      track_names_all, "plot.order.tracks")
 
-# --- compute each band from the declaration order ----------------------------
+# --- compute each band from the resolved order -------------------------------
 # The first entry is the TOP of the panel; y decreases down the list.
 #
 # Three knobs control the vertical rhythm, and nothing else does:
@@ -946,7 +1131,13 @@ panel_locus_map <- function(panel, chr_id, win_start, win_end, res_bp) {
     neutral <- 0
   } else {
     b <- load_hic_chr(panel$vs, chr_id, res_bp)
-    m <- merge(a$dt, b$dt, by = c("x", "y"), all = TRUE, suffixes = c("", "_vs"))
+    # Both sides are whole-chromosome tables, and the join below keeps only what
+    # falls on the grid -- so trim to the window BEFORE the outer merge rather
+    # than merging millions of bin pairs and throwing nearly all of them away.
+    # The cached tables themselves are left untouched, other loci still need them.
+    in_win <- function(d) d[x >= win_start & x <= win_end & y >= win_start & y <= win_end]
+    m <- merge(in_win(a$dt), in_win(b$dt), by = c("x", "y"), all = TRUE,
+               suffixes = c("", "_vs"))
     setkey(m, x, y)
     m <- m[grid]
     if (panel$matrix == "subtraction") {
@@ -961,6 +1152,16 @@ panel_locus_map <- function(panel, chr_id, win_start, win_end, res_bp) {
     }
   }
   m[, value := nafill(value, fill = neutral)]
+
+  # ...but only INSIDE the chromosome. A grid anchor past either end is not an
+  # empty bin, it is not a bin at all: `padding_fraction` adds context that does
+  # not exist at a telomere, and a whole-chromosome locus is usually written
+  # past the end on purpose. Filling those with the neutral value paints them
+  # the colour of "average" -- which on a log2 ramp is a solid orange field
+  # wrapped around the data triangle, and reads as data. Left NA, the panel's
+  # own `na_color` decides what the outside of the chromosome looks like.
+  size <- chr.list[chr == chr_id, size]
+  if (length(size)) m[x < 0 | y < 0 | x >= size | y >= size, value := NA_real_]
   m[, .(x, y, value)]
 }
 
@@ -968,14 +1169,24 @@ panel_locus_map <- function(panel, chr_id, win_start, win_end, res_bp) {
 # HEATMAP RENDERING
 # =============================================================================
 
-# The four corners of one matrix bin, rotated -45 degrees so the diagonal of
+# The four corners of EVERY matrix bin, rotated -45 degrees so the diagonal of
 # the contact matrix becomes the horizontal genomic axis.
+#
+# Vectorised over the whole table on purpose. Called one bin at a time -- which
+# is what `by = .(x, y)` did -- this costs about 120 us per bin in data.table
+# group overhead alone, so a 5 Mb window at 10 kb (350k bins in the upper
+# triangle) spent 43 s per panel building corners for a map that renders in 1 s.
 to_polygon <- function(x, y, counts, resol) {
   half <- resol / 2
-  cx <- c(x - half, x + half, x + half, x - half)
-  cy <- c(y - half, y - half, y + half, y + half)
-  data.frame(u = (cx + cy) / sqrt(2), v = (cy - cx) / sqrt(2),
-             counts = counts, id = paste(x, y, sep = "_"), corner = 1:4)
+  n    <- length(x)
+  # Corner order within each bin is 1..4 around the square, as before, so
+  # geom_polygon still closes it: (-,-) (+,-) (+,+) (-,+).
+  cx <- rep(x, each = 4L) + c(-half,  half, half, -half)
+  cy <- rep(y, each = 4L) + c(-half, -half, half,  half)
+  data.table(u = (cx + cy) / sqrt(2), v = (cy - cx) / sqrt(2),
+             counts = rep(counts, each = 4L),
+             id     = rep(seq_len(n), each = 4L),
+             corner = rep_len(1:4, 4L * n))
 }
 
 # Build the fill scale for a panel. A comparison uses a diverging ramp pinned
@@ -1024,7 +1235,21 @@ matriz_horizontal <- function(panel, plot_df, region, resol, lims, scale_vals) {
   plot_df <- plot_df[, .(x = as.numeric(x), y = as.numeric(y), counts = value)]
 
   # Only the upper triangle is drawn; the contact matrix is symmetric.
-  polygonos <- plot_df[y >= x][, to_polygon(x, y, counts, resol), by = .(x, y)]
+  bins <- plot_df[y >= x]
+
+  # ...and of that triangle, only what the crop keeps. A bin whose rotated
+  # square lies entirely outside the axis limits is dropped by ggplot anyway,
+  # at the scale, after its corners have been built and carried through the
+  # whole pipeline -- and with the usual crop that is half the triangle. The
+  # test is on the bin's own extent, so a square straddling a limit is kept and
+  # the picture is unchanged. Colour limits are NOT affected: `scale_vals` is
+  # computed by the caller from the full triangle.
+  s2 <- sqrt(2)
+  bins <- bins[(x + y + resol) / s2 >= lims$u_min &
+               (x + y - resol) / s2 <= lims$u_max &
+               (y - x - resol) / s2 <= lims$v_max]
+
+  polygonos <- to_polygon(bins$x, bins$y, bins$counts, resol)
 
   p <- ggplot(polygonos, aes(u, v, group = id, fill = counts)) +
     geom_polygon() +
@@ -1088,19 +1313,124 @@ crop_limits <- function(win_start, win_end, crop_x, crop_y) {
 # MARKS: BIGWIG SIGNAL
 # =============================================================================
 
-# Mean score of the overlapping bigwig intervals per bin, one row per bin.
-bin_marks <- function(region_gr) {
+# How many bins a mark gets across the visible region -- the single most
+# important number for how a sharp mark reads, and the one no scaling knob
+# downstream can compensate for.
+#
+# A CTCF site is a few hundred bp. Averaged into a 12.5 kb bin it is diluted
+# ~40x into the local background, and on chr15:55-60 Mb that takes the
+# summit-to-background ratio of the CN sample from 6.6 (at 1 kb bins) down to
+# 1.7. At 1.7 nothing downstream can help: `signal_scale: auto` divides the
+# band by the maximum, so a background sitting at 1/1.7 of that maximum fills
+# 59% of the band and the track reads as a noisy slab. The dynamic range is
+# gone here, in the binning, before signal_scale ever sees it.
+#
+# THE THREE MODES. A track picks one:
+#
+#   n_bins: 400     A fixed COUNT. The window is cut into this many bins
+#                   whatever its width, so the bin is 12.5 kb at 5 Mb and
+#                   250 kb at 100 Mb -- the resolution changes under you as
+#                   soon as you change the locus, which is what makes one
+#                   signal_scale that worked at one zoom wrong at the next.
+#
+#   bin_size: 200   A fixed WIDTH in bp, and as many bins as that takes. The
+#                   resolution is now a property of the track rather than of
+#                   the window: 200 bp resolves single CTCF sites at any zoom,
+#                   and the cost is the bin COUNT, which grows with the window
+#                   (a whole chromosome at 200 bp is half a million bins).
+#
+#   n_bins: auto    One bin per pixel of the finished figure (the default).
+#                   This is what a genome browser does -- IGV re-bins to the
+#                   window it is drawing, which is the reason a track looks
+#                   sharper there than under a fixed n_bins -- and it is the
+#                   finest binning that can actually be seen: past one bin per
+#                   pixel the extra bins land on top of each other.
+#
+# ...which is also the ceiling, and `bin_size` is the one mode that can ask to
+# go past it: 200 bp is 25k bins over 5 Mb and 390k over a chromosome. Those
+# extra bins are not just invisible, they are ruinous -- the whole cost lands
+# in the PNG rasterizer drawing a ribbon outline of three quarters of a million
+# vertices, and the same figure that takes 14 s at one bin per pixel had not
+# finished after 13 minutes.
+#
+# Capping is exact rather than an approximation, because both windowing
+# functions survive the collapse when the bins are equal width: the mean of
+# equal-width means is the overall mean, and the max of maxes is the overall
+# max. So a capped `bin_size` draws precisely what `n_bins: <cap>` would, and
+# the only thing lost is resolution nothing could have displayed.
+mark_n_bins <- function(t, locus, region_gr) {
+  px <- if (identical(locus$formato, "png")) locus$width / 2.54 * locus$dpi else 2000
+  px <- max(200, min(round(px), 20000))
+
+  want <- if (!is.na(t$bin_size)) max(1, round(width(region_gr) / t$bin_size))
+          else if (!is.na(t$n_bins)) max(1, round(t$n_bins))
+          else return(px)
+  if (want <= px) return(want)
+
+  # Say so rather than quietly redrawing the track at a resolution the config
+  # did not ask for. What is worth flagging is the bin WIDTH that comes back,
+  # because signal_scale is tuned against a bin width: a number that filled the
+  # band at 200 bp is wrong at 42 kb.
+  #
+  # Deliberately no advice to reach for `windowing: max` here. It rescues a bin
+  # a few times wider than the peaks, but this cap lands on bins hundreds of
+  # times wider, where essentially every bin contains a summit -- so max is
+  # high everywhere, and the track saturates into a slab instead of the flat
+  # one `mean` gives. Neither is a picture of peaks; the window is simply too
+  # wide to have any.
+  message("  ", t$name, ": ", if (!is.na(t$bin_size)) paste0("bin_size ", t$bin_size, " bp")
+          else paste0("n_bins ", want),
+          " over ", round(width(region_gr) / 1e6, 1), " Mb is ", want,
+          " bins, more than this figure has pixels -- drawing ", px,
+          " of ", round(width(region_gr) / px), " bp. Re-tune signal_scale for ",
+          "this width, or set it to 'auto'.")
+  px
+}
+
+# One value per bin, one row per bin.
+#
+# `windowing` decides how the bases inside a bin become that one value, and for
+# a sharp mark it matters more than any scaling knob downstream.
+#
+#   mean  per-base average. Weighted by the bases each interval contributes,
+#         which is what "mean" has to mean for a bigwig: these files are
+#         run-length encoded, so one 400 bp interval over a peak and one 20 kb
+#         interval of background are a single row each. An unweighted mean over
+#         overlapping intervals -- what this used to do -- counts those two
+#         equally and reports a value the region never has.
+#
+#   max   the tallest value in the bin, i.e. the summit survives whatever the
+#         bin size. This is the one to reach for on a low signal-to-noise
+#         sample: a CTCF site is a few hundred bp, so at a 2 kb bin a mean
+#         spreads a summit over 5-10x its own width and buries it in the local
+#         background. On chr15:55-60 Mb that is the whole difference for the CN
+#         ChIP -- peak-to-background 3.8 under `mean` against 14.4 under `max`,
+#         which is a background slab filling 30% of the band against 14%.
+#         `mean` stays the default: it is the honest summary of a broad mark,
+#         and `max` on a noisy sample also lifts the noise spikes.
+bin_marks <- function(region_gr, locus) {
   mk_tracks <- tracks_of("mark")
   if (!length(mk_tracks)) return(data.table())
   rbindlist(lapply(mk_tracks, function(t) {
-    bins <- tile(region_gr, n = t$n_bins)[[1]]
+    bins <- tile(region_gr, n = mark_n_bins(t, locus, region_gr))[[1]]
     bw   <- import(t$file, which = region_gr)
     sig  <- numeric(length(bins))
     if (length(bw)) {
       ov <- findOverlaps(bins, bw)
       if (length(ov)) {
-        agg <- tapply(bw$score[subjectHits(ov)], queryHits(ov), mean)
-        sig[as.integer(names(agg))] <- agg
+        qh <- queryHits(ov); sh <- subjectHits(ov)
+        if (t$windowing == "max") {
+          agg <- tapply(bw$score[sh], qh, max)
+          sig[as.integer(names(agg))] <- agg
+        } else {
+          # bases of each interval that actually fall inside the bin
+          wt  <- as.numeric(width(pintersect(bins[qh], bw[sh])))
+          agg <- tapply(bw$score[sh] * wt, qh, sum)
+          sig[as.integer(names(agg))] <- agg
+          # ...divided by the WHOLE bin, not just its covered part: a gap in the
+          # bigwig is zero coverage, not missing data, and must pull the mean down.
+          sig <- sig / as.numeric(width(bins))
+        }
       }
     }
     data.table(start = start(bins), end = end(bins), signal = sig, mark = t$name)
@@ -1197,8 +1527,11 @@ select_structures <- function(s, chr_label, win_start, win_end) {
   sc <- sc[end > win_start & start < win_end]          # any overlap with the view
   if (!nrow(sc)) return(sc)
 
-  if (s$min_span > 0) sc <- sc[(end - start) >= s$min_span]
-  if (s$max_span > 0) sc <- sc[(end - start) <= s$max_span]
+  win <- win_end - win_start
+  lo_span <- max(s$min_span, s$min_span_frac * win)
+  hi_span <- max(s$max_span, s$max_span_frac * win)
+  if (lo_span > 0) sc <- sc[(end - start) >= lo_span]
+  if (hi_span > 0) sc <- sc[(end - start) <= hi_span]
   if (!nrow(sc)) return(sc)
 
   # The extent this track actually draws: the whole domain for a bar, the two
@@ -1290,8 +1623,7 @@ build_structure_track <- function(s, chr_label, win_start, win_end) {
   }
 
   # Arc: a semicircle from anchor midpoint to anchor midpoint, rising from the
-  # band's baseline. Heights are normalised by the widest arc in view, so the
-  # tallest one exactly fills the band and none can escape it.
+  # band's baseline.
   #
   # Deepest last, so when the arcs are filled the small nested ones are not
   # buried under the wide one that contains them.
@@ -1299,14 +1631,66 @@ build_structure_track <- function(s, chr_label, win_start, win_end) {
   sc <- sc[ord]; alp <- alp[ord]
   if (length(line) > 1) line <- line[ord]
   res <- max(3, s$arc_resolution)
-  widest <- max(sc$end - sc$start)
+
+  # HOW TALL EACH ARC IS DRAWN. A semicircle ties the apex to the span, which is
+  # the whole problem: put a 5 Mb loop and a 20 kb one in the same window and
+  # the short one is 0.4% of the band. So the height is decided HERE, from the
+  # span, and the shape below is stretched to match it -- the arc is a half
+  # ellipse, its feet on the anchors and its apex wherever this says.
+  spans <- sc$end - sc$start
+  # The span that reaches the top of the band. auto = the widest in view, so
+  # nothing can exceed the band whatever the locus holds.
+  ref <- max(s$height_span, s$height_span_frac * (win_end - win_start))
+  if (ref <= 0) ref <- max(spans)
+  frac <- switch(s$height_by,
+    # Proportional. Honest, and only readable while the loops of one locus are
+    # within a few fold of each other.
+    span = spans / ref,
+    # Proportional to the LOG of the span. A locus holding 20 kb, 300 kb and
+    # 5 Mb loops spreads them over the band instead of pinning the first two to
+    # the baseline; the ordering is still by length. The bottom of the scale is
+    # the shortest arc in view unless height_span_min names it.
+    log = {
+      lo <- if (s$height_span_min > 0) s$height_span_min else min(spans)
+      if (ref <= lo) rep(1, length(spans))
+      else pmin(1, pmax(0, log(pmax(spans, 1) / lo) / log(ref / lo)))
+    },
+    # Order only, evenly spread. Immune to the span distribution: n distinct
+    # lengths get n evenly spaced heights, so nothing is ever squashed. Ties
+    # share a height, and the shortest sits on the floor -- give it a
+    # height_min or it lies flat on the baseline.
+    rank = {
+      r <- frank(spans, ties.method = "dense")
+      if (max(r) <= 1) rep(1, length(r)) else (r - 1) / (max(r) - 1)
+    },
+    stop("tracks.list.", s$name, ": 'height_by: ", s$height_by,
+         "' is not valid. Use one of: span, log, rank", call. = FALSE))
+
+  # The mapping is RESCALED into [height_min, height_max] rather than clamped,
+  # so raising the floor lifts the smallest arcs clear of the baseline without
+  # collapsing the differences between them, and lowering the ceiling gives the
+  # longest ones headroom under the track divider.
+  hmin <- max(0, min(1, s$height_min))
+  hmax <- max(hmin, min(1, s$height_max))
+  peak <- (hmin + (hmax - hmin) * frac) * s$height
+
   out <- lapply(seq_len(nrow(sc)), function(j) {
     x1 <- sc$start[j]; x2 <- sc$end[j]
     if (x2 <= x1) return(NULL)
     xs  <- seq(x1, x2, length.out = res)
     rad <- (x2 - x1) / 2; xc <- (x1 + x2) / 2
-    h <- sqrt(pmax(0, rad^2 - (xs - xc)^2)) / (widest / 2) * s$height
-    data.table(x = xs, y = s$ymin + h,
+    # Half ellipse: same shape as the old semicircle, but scaled vertically to
+    # the height decided above instead of to the radius.
+    y <- s$ymin + peak[j] * sqrt(pmax(0, 1 - ((xs - xc) / rad)^2))
+    if (s$crop && peak[j] > s$height) {
+      # Only `height_by: span` can get here. Insert the two x where the ellipse
+      # crosses the top of the band, so the cut starts exactly there instead of
+      # at the nearest sampled point.
+      dx <- rad * sqrt(pmax(0, 1 - (s$height / peak[j])^2))
+      xs <- sort(c(xs, xc - dx, xc + dx))
+      y  <- pmin(s$ymin + peak[j] * sqrt(pmax(0, 1 - ((xs - xc) / rad)^2)), s$ymax)
+    }
+    data.table(x = xs, y = y,
                alpha = alp[j], line = if (length(line) > 1) line[j] else line,
                depth = sc$depth[j],
                id = paste0(s$name, "_", j), track = s$name)
@@ -1408,36 +1792,311 @@ select_labels <- function(dt, lab, window) {
   rbind(forced, pool, fill = TRUE)
 }
 
+# Per-feature colour from a signed number -- a log2FC, a delta, a correlation.
+# A diverging ramp with `mid` pinned to `midpoint`, so the neutral value keeps
+# the neutral colour whatever happens to be in view.
+#
+# The extent is symmetric about the midpoint by construction (the wider limit
+# sets it): a ramp whose neutral colour sits off centre reads as a sequential
+# one and quietly shows a mild change as a strong one. Values past the limits
+# are squished onto the ends rather than dropped, so `limits` is what decides
+# how much of the range the eye actually resolves -- set it wide and everything
+# real is pale, set it tight and every gene saturates.
+#
+# The ends of the ramp are resolved once, here, because the legend has to draw
+# the same scale the features were coloured with -- `limits: auto` reads the
+# data in view, so the two would drift apart if each worked it out on its own.
+score_limits <- function(v, cs, track_name) {
+  midpoint <- as.numeric(cs$midpoint %||% 0)
+  lim <- cs$limits %||% "auto"
+  if (is.character(lim) && tolower(lim[1]) == "auto") {
+    # Symmetric around the midpoint, from what is in view. Convenient, and the
+    # reason to avoid it in a series: the same log2FC then draws a different
+    # colour in every figure.
+    r <- if (all(is.na(v))) NA_real_ else max(abs(v - midpoint), na.rm = TRUE)
+    if (!is.finite(r) || r == 0) r <- 1
+    return(c(midpoint - r, midpoint + r))
+  }
+  lim <- as.numeric(unlist(lim))
+  if (length(lim) != 2 || anyNA(lim)) {
+    stop("tracks.list.", track_name, ": 'color_scale.limits' must be two",
+         " numbers or 'auto'", call. = FALSE)
+  }
+  lim
+}
+
+score_colors <- function(v, cs, track_name, lim = score_limits(v, cs, track_name)) {
+  low    <- as.character(cs$low  %||% "blue3")
+  mid    <- as.character(cs$mid  %||% "white")
+  high   <- as.character(cs$high %||% "red3")
+  na_col <- as.character(cs$na_color %||% "grey70")
+  midpoint <- as.numeric(cs$midpoint %||% 0)
+
+  if (all(is.na(v))) {
+    warning("tracks.list.", track_name, ": 'color_by: score' but this BED has no",
+            " usable score column; every feature takes color_scale.na_color",
+            call. = FALSE)
+    return(rep(na_col, length(v)))
+  }
+
+  t <- scales::rescale_mid(v, to = c(0, 1), from = range(lim), mid = midpoint)
+  out <- scales::div_gradient_pal(low, mid, high, space = "Lab")(pmin(1, pmax(0, t)))
+  out[is.na(out)] <- na_col
+  out
+}
+
+# The colour bar for a `color_by: score` track: a strip of the same ramp, placed
+# beside the track panel the way the heatmaps place theirs. It is a plot of its
+# own rather than a ggplot guide because the track panel spends its fill scale
+# on `scale_fill_identity()` -- that is what lets one layer carry a colour per
+# feature -- and a plot has exactly one scale per aesthetic.
+#
+# Returns an inset, or NULL when the track is not on a gradient, drew nothing
+# here, or turned the legend off.
+build_score_legend <- function(a, lim, ylim) {
+  if (!identical(a$color_by, "score") || is.null(lim)) return(NULL)
+  cs <- a$color_scale
+  lg <- cs$legend %||% list()
+  if (!isTRUE(lg$show %||% TRUE)) return(NULL)
+
+  # Strips rather than an axis: the tick labels are drawn as geometry inside the
+  # bar's own coordinates, so they take a FIXED share of the inset. Left to a
+  # ggplot axis, the text width is whatever the numbers happen to be, and it
+  # eats the inset from the right until the ramp itself is a hairline.
+  edges  <- seq(lim[1], lim[2], length.out = 129)
+  strips <- data.table(ymin = utils::head(edges, -1), ymax = utils::tail(edges, -1))
+  strips[, col := score_colors((ymin + ymax) / 2, cs, a$name, lim)]
+  # A bar this small is a few strips per pixel, and abutting rects leave
+  # antialiased seams that read as banding. Overlapping them by half a strip
+  # covers the seam; the coord clips whatever overflows the ends.
+  strips[, ymax := ymax + (edges[2] - edges[1]) / 2]
+
+  brks <- if (!is.null(lg$breaks)) as.numeric(unlist(lg$breaks))
+          else seq(lim[1], lim[2], length.out = max(2, as.numeric(lg$n_breaks %||% 3)))
+  brks <- brks[brks >= min(lim) & brks <= max(lim)]
+  digits <- as.numeric(lg$digits %||% 2)
+  bw <- 0.42                                  # ramp width, the rest is labels
+
+  bar <- ggplot() +
+    geom_rect(data = strips,
+              aes(xmin = 0, xmax = bw, ymin = ymin, ymax = ymax, fill = col)) +
+    scale_fill_identity()
+  if (isTRUE(lg$ticks %||% TRUE)) {
+    bar <- bar + geom_segment(data = data.table(y = brks),
+                              aes(x = bw, xend = bw * 1.2, y = y, yend = y),
+                              linewidth = 0.2, colour = "black")
+  }
+  # Sizes stay in pt as everywhere else in the config; geom_text wants mm.
+  bar <- bar +
+    geom_text(data = data.table(y = brks, lab = as.character(signif(brks, digits))),
+              aes(x = bw * 1.45, y = y, label = lab), hjust = 0,
+              size = as.numeric(lg$text_size %||% 3.5) / .pt) +
+    coord_cartesian(xlim = c(0, 1), ylim = range(lim), expand = FALSE, clip = "off") +
+    labs(title = as.character(lg$title %||% "score")) +
+    theme_void() +
+    theme(plot.title = element_text(size = as.numeric(lg$title_size %||% 4),
+                                    hjust = 0, face = "bold", margin = margin(b = 1)),
+          plot.margin = margin(0, 0, 0, 0))
+
+  # Placement is in fractions of the TRACK PANEL, and x is normally negative:
+  # the bar lives in the margin to its left, on the same column as the heatmap
+  # legends. `auto` on y centres it on the band of its own track, which is what
+  # ties the scale to the features it explains without hardcoding a number that
+  # breaks the moment a track is enabled above it.
+  pos <- lg$position %||% list(-0.09, "auto")
+  x   <- as.numeric(pos[[1]])
+  yp  <- pos[[2]]
+  ycen <- if (is.character(yp) && tolower(yp) == "auto") {
+            (a$ycen - ylim[1]) / diff(ylim)
+          } else as.numeric(yp)
+  w <- as.numeric(lg$width %||% 0.018)
+  h <- if (is.null(lg$height) || identical(tolower(as.character(lg$height)), "auto")) {
+         a$height / diff(ylim)          # as tall as the track's own band
+       } else as.numeric(lg$height)
+
+  inset_element(bar, left = x - w / 2, bottom = ycen - h / 2,
+                right = x + w / 2, top = ycen + h / 2,
+                align_to = "panel", clip = FALSE, on_top = TRUE)
+}
+
+# The BED columns this reader understands, in their standard order.
+BED_FIELDS <- c("chr", "start", "end", "name", "score", "strand", "itemRgb")
+
+# A plain BED reader: takes the columns it is told to take and asks nothing of
+# the rest. No blocks, so no exon structure -- `style: model` falls back to
+# boxes on its own.
+read_bed_plain <- function(file, sel, cols, track_name) {
+  dt <- fread(file, sep = "\t", header = FALSE, fill = TRUE, quote = "",
+              showProgress = FALSE, colClasses = "character")
+  # A '#chrom ...' header, and any track/browser line, are ordinary data rows
+  # to fread. Dropping them here is what lets the file keep its header.
+  dt <- dt[!grepl("^(#|track|browser)", dt[[1]])]
+  if (!nrow(dt)) {
+    stop("tracks.list.", track_name, ": no data rows in ", file, call. = FALSE)
+  }
+
+  if (is.null(sel) && is.null(cols)) {
+    # The standard meaning of the first columns, which is all a BED guarantees.
+    sel  <- seq_len(min(ncol(dt), 6L))
+    cols <- BED_FIELDS[sel]
+  } else if (is.null(sel)) {
+    sel <- seq_along(cols)
+  } else if (is.null(cols)) {
+    cols <- BED_FIELDS[seq_along(sel)]
+  }
+  if (length(sel) != length(cols)) {
+    stop("tracks.list.", track_name, ": `select` and `columns` must name the",
+         " same number of fields (", length(sel), " vs ", length(cols), ")",
+         call. = FALSE)
+  }
+  bad <- setdiff(cols, BED_FIELDS)
+  if (length(bad)) {
+    stop("tracks.list.", track_name, ": 'columns: ", paste(bad, collapse = ", "),
+         "' is not valid. Use one of: ", paste(BED_FIELDS, collapse = ", "),
+         call. = FALSE)
+  }
+  if (!all(c("chr", "start", "end") %in% cols)) {
+    stop("tracks.list.", track_name, ": `columns` must include chr, start and end",
+         call. = FALSE)
+  }
+  if (max(sel) > ncol(dt)) {
+    stop("tracks.list.", track_name, ": `select` asks for column ", max(sel),
+         " but ", file, " has ", ncol(dt), call. = FALSE)
+  }
+
+  take <- function(nm) if (nm %in% cols) dt[[sel[match(nm, cols)]]] else NULL
+  st <- suppressWarnings(as.numeric(take("start")))
+  en <- suppressWarnings(as.numeric(take("end")))
+  keep <- !is.na(st) & !is.na(en)
+  if (!any(keep)) {
+    stop("tracks.list.", track_name, ": no row of ", file,
+         " has numeric start/end in the selected columns", call. = FALSE)
+  }
+
+  strd <- take("strand")
+  strd <- if (is.null(strd)) rep("*", sum(keep)) else {
+    s <- strd[keep]; s[!s %in% c("+", "-")] <- "*"; s
+  }
+  # BED is 0-based half-open, the same shift rtracklayer applies, so a feature
+  # keeps the coordinates it would have had through the importer.
+  gr <- GRanges(seqnames = as.character(take("chr"))[keep],
+                ranges  = IRanges(start = st[keep] + 1, end = en[keep]),
+                strand  = strd)
+  if ("name"  %in% cols) mcols(gr)$name  <- as.character(take("name"))[keep]
+  if ("score" %in% cols) mcols(gr)$score <- suppressWarnings(as.numeric(take("score")))[keep]
+  if ("itemRgb" %in% cols) mcols(gr)$itemRgb <- as.character(take("itemRgb"))[keep]
+  gr
+}
+
+# Read one annotation track's file.
+#
+# rtracklayer's importer is the right tool for a real BED -- it is the only
+# thing here that understands BED12 blocks, which `style: model` is built on --
+# but it reads columns by POSITION AND MEANING: column 7 must be thickStart, an
+# integer. A table that carries its own extra columns (a GWAS bed with the trait
+# in column 7) therefore does not fail as a malformed BED; it dies inside scan()
+# with "expected 'an integer', got '<some word>'". So the plain reader above
+# stands behind it.
+#
+# Naming `select` (and optionally `columns`) skips the importer altogether,
+# which is the honest thing to do for a file that was never a BED past column 6:
+#   select:  [1, 2, 3, 4, 5, 6]
+#   columns: [chr, start, end, name, score, strand]
+load_annotation <- function(a, region_gr) {
+  sel  <- if (!is.null(a$select))  as.integer(unlist(a$select))    else NULL
+  cols <- if (!is.null(a$columns)) as.character(unlist(a$columns)) else NULL
+  if (!is.null(sel) || !is.null(cols)) {
+    return(read_bed_plain(a$file, sel, cols, a$name))
+  }
+  gr <- tryCatch(import(a$file, which = region_gr), error = function(e) {
+    warning("tracks.list.", a$name, ": rtracklayer could not read this file as a",
+            " BED (", conditionMessage(e), "). Reading the first 6 columns as",
+            " chr/start/end/name/score/strand instead -- set `select:` and",
+            " `columns:` if that is not what they hold. BED12 blocks are lost on",
+            " this path, so `style: model` will draw boxes.", call. = FALSE)
+    NULL
+  })
+  # The importer subsets by region itself; the plain reader reads the file and
+  # lets the caller's chromosome and overlap filters do it.
+  if (is.null(gr)) read_bed_plain(a$file, NULL, NULL, a$name) else gr
+}
+
 # Build every geometry a single annotation track needs.
 build_annotation_track <- function(a, chr_id, region_gr, window) {
   empty <- data.table()
-  gr <- import(a$file, which = region_gr)
+  gr <- load_annotation(a, region_gr)
   gr <- gr[seqnames(gr) == paste0("chr", chr_id)]
   gr <- subsetByOverlaps(gr, region_gr)
   if (!length(gr)) {
     warning("tracks.list.", a$name, ": no features in the visible region", call. = FALSE)
     return(list(boxes = empty, introns = empty, exons = empty, cds = empty,
                 chevrons = empty, triangles = empty, labels = empty,
-                label_zone = list(centre = a$ycen, slack = a$height / 2)))
+                label_zones = data.table(zone = 1L, centre = a$ycen,
+                                         slack = a$height / 2)))
   }
 
   mc <- mcols(gr)
-  # Per-feature color: an explicit track color wins, otherwise the BED's own
-  # itemRgb column, otherwise black.
-  col <- if (!is.na(a$color)) rep(a$color, length(gr))
-         else if (!is.null(mc$itemRgb)) vapply(mc$itemRgb, rgb_from_string, character(1))
-         else rep("#000000", length(gr))
   nms  <- if (!is.null(mc$name))  as.character(mc$name) else rep(NA_character_, length(gr))
   scr  <- if (!is.null(mc$score)) as.numeric(mc$score)  else rep(NA_real_, length(gr))
+
+  # Per-feature colour, in order of precedence: the gradient over the score
+  # column if one was asked for, then an explicit track colour, then the BED's
+  # own itemRgb, then black. Every glyph the track draws -- exon, CDS, box,
+  # arrowhead -- reads this one vector, so the choice is made once here.
+  # Kept for the legend, which has to draw the ramp these colours came from.
+  score_lims <- if (identical(a$color_by, "score")) {
+                  score_limits(scr, a$color_scale, a$name)
+                } else NULL
+  col <- if (identical(a$color_by, "score")) {
+           score_colors(scr, a$color_scale, a$name, score_lims)
+         } else if (!is.na(a$color)) {
+           rep(a$color, length(gr))
+         } else if (!is.null(mc$itemRgb)) {
+           vapply(mc$itemRgb, rgb_from_string, character(1))
+         } else rep("#000000", length(gr))
   strd <- as.character(strand(gr))
+
+  n_feat <- length(gr)
+  tstart <- start(gr); tend <- end(gr)          # TRUE coordinates, never scaled
+
+  # ---- minimum drawn width --------------------------------------------------
+  # A 2 kb gene in a 1.5 Mb window is a third of a pixel wide, so it is simply
+  # absent from the figure. Growing only its exons does not help: the whole
+  # model is that narrow. Instead the feature is ZOOMED about its own midpoint
+  # until it reaches the floor, and every part of it -- exons, CDS, chevrons,
+  # arrowhead -- is mapped through the same factor, so a small gene reads as a
+  # small gene rather than as a smear.
+  #
+  # This is the one place the drawing stops being to scale, so it is opt-in and
+  # anchored on the midpoint: the feature stays exactly where it belongs and
+  # only its span is exaggerated.
+  min_fw <- max(a$min_feature_width, a$min_feature_frac * window)
+  fmid   <- (tstart + tend) / 2
+  wf     <- widen(tstart, tend, min_fw)
+  # how much each feature was stretched; 1 = untouched
+  span   <- tend - tstart
+  zoomf  <- ifelse(span > 0, (wf$xmax - wf$xmin) / span, 1)
+  # map any coordinate inside feature k onto the zoomed model
+  zoom   <- function(x, k) fmid[k] + (x - fmid[k]) * zoomf[k]
+  fstart <- wf$xmin; fend <- wf$xmax
+
+  # ---- which features get a label -------------------------------------------
+  # Chosen BEFORE the vertical layout, because the answer decides how much of
+  # the band the labels are entitled to. Selection reads the TRUE widths: a
+  # gene does not become worth naming because it was drawn wider.
+  lab_cfg <- a$labels
+  cand <- data.table(idx = seq_len(n_feat), start = tstart, end = tend,
+                     gene = nms, score = scr)[!is.na(gene) & nzchar(gene)]
+  sel  <- select_labels(cand, lab_cfg, window)
 
   # ---- vertical placement inside this track's band --------------------------
   # `packed` splits the band into as many rows as the features need; `single`
   # and `jitter` keep one row. Feature height is always relative to the ROW, so
   # adding rows makes each glyph proportionally thinner instead of overflowing.
-  n_feat <- length(gr)
+  # Packing reads the DRAWN extent, so two hairline genes blown up to the
+  # minimum width are still kept off each other's row.
   if (a$layout == "packed") {
-    rows   <- pack_rows(start(gr), end(gr), a$row_gap_frac * window, a$max_rows)
+    rows   <- pack_rows(fstart, fend, a$row_gap_frac * window, a$max_rows)
     n_rows <- max(rows)
   } else {
     rows   <- rep(1L, n_feat)
@@ -1450,10 +2109,45 @@ build_annotation_track <- function(a, chr_id, region_gr, window) {
   # slack you then give repulsion lets it drop them back onto the features.
   # With it, the separation holds by construction: features pack below, labels
   # sit above, and neither can reach the other.
-  lab_cfg <- a$labels
-  reserve <- max(0, min(0.9, as.numeric(lab_cfg$reserve %||% 0)))
+  #
+  # WHERE THE LABELS LIVE -- two independent choices:
+  #
+  #   anchor: band  one strip for the whole track, at one end of the band
+  #           row   every label rides its OWN row, just clear of its own feature
+  #   side:   top   the strip, or the rise, goes above the features
+  #           bottom          ...below them
+  #
+  # `band` is the safe default: features and labels get disjoint zones, so no
+  # label can ever land on a gene. Its cost is that the strip is at one END of
+  # the band, so with packed rows the far row's labels are a whole band away
+  # from what they name, and no amount of repulsion force can pull them closer
+  # -- the strip is exactly where they were told to be. `row` trades that
+  # guarantee for short leader lines: a label sits one row-gap from its own
+  # feature, whichever row that is.
+  anchor <- tolower(as.character(lab_cfg$anchor %||% "band"))
+  side   <- tolower(as.character(lab_cfg$side   %||% "top"))
+  if (!anchor %in% c("band", "row")) {
+    stop("tracks.list.", a$name, ": 'labels.anchor: ", anchor,
+         "' is not valid. Use one of: band, row", call. = FALSE)
+  }
+  if (!side %in% c("top", "bottom")) {
+    stop("tracks.list.", a$name, ": 'labels.side: ", side,
+         "' is not valid. Use one of: top, bottom", call. = FALSE)
+  }
+
+  # An empty strip is dead space, so the reserve is only taken when labels are
+  # actually going to be drawn: turn `labels.enabled` off, or land on a locus
+  # where every candidate was filtered out, and the genes get the whole band
+  # instead of the fraction left over by a strip nothing will occupy. Under
+  # `anchor: row` there is no strip at all -- the labels are among the features
+  # -- so the reserve is not taken there either.
+  reserve <- if (nrow(sel) && anchor == "band") {
+               max(0, min(0.9, as.numeric(lab_cfg$reserve %||% 0)))
+             } else 0
   feat_h  <- a$height * (1 - reserve)          # height left for the features
-  feat_top <- a$ymin + feat_h                  # boundary between the two zones
+  # The features sit at the end of the band OPPOSITE the strip, so `feat_top`
+  # is the top of the feature zone in both cases.
+  feat_top <- if (side == "bottom") a$ymax else a$ymin + feat_h
 
   row_h  <- feat_h / n_rows                    # height of one row
   half   <- row_h / 2                          # half-height of a row
@@ -1462,36 +2156,63 @@ build_annotation_track <- function(a, chr_id, region_gr, window) {
   minw   <- a$min_exon_frac * window
 
   # row 1 sits at the TOP of the feature zone, like a genome browser
-  ybase <- feat_top - (rows - 0.5) * row_h
+  row_centre <- function(r) feat_top - (r - 0.5) * row_h
+  ybase <- row_centre(rows)
   if (a$layout == "jitter" && a$jitter > 0) {
     if (!is.null(a$seed)) set.seed(a$seed)
     ybase <- ybase + runif(n_feat, -half * a$jitter, half * a$jitter)
   }
 
-  # Where the labels are allowed to be, as an interval [zone_lo, zone_hi].
-  #
-  # Repulsion is free to put a label anywhere in this interval, and it uses
-  # that freedom to resolve collisions -- which is why, given the whole strip,
-  # some labels end up high and others come to rest right on the features.
-  # `gap` raises the FLOOR of the interval, so no label can settle closer than
-  # that to the genes no matter how crowded the locus is. `ylim` then shrinks
-  # the interval symmetrically, and `offset` slides the whole thing.
+  # Each label is nudged to the centre of a ZONE and repulsion may then move it
+  # within that zone. `ylim` sets how much of the zone repulsion may use, and
+  # `offset` slides the zone. What differs between the two anchors is how many
+  # zones there are and where they sit.
   band_half <- a$height / 2
-  if (reserve > 0) {
-    strip_h <- a$height * reserve
-    gap     <- max(0, min(0.95, as.numeric(lab_cfg$gap %||% 0)))
-    zone_lo <- feat_top + strip_h * gap
-    zone_hi <- a$ymax
-  } else {
-    zone_lo <- a$ycen - band_half
-    zone_hi <- a$ycen + band_half
-  }
-  zone_half   <- (zone_hi - zone_lo) / 2
-  zone_centre <- (zone_lo + zone_hi) / 2 + band_half * as.numeric(lab_cfg$offset %||% 0)
-  label_zone <- list(centre = zone_centre,
-                     slack  = zone_half * as.numeric(lab_cfg$ylim %||% 1))
+  gap    <- max(0, min(0.95, as.numeric(lab_cfg$gap %||% 0)))
+  ylimf  <- as.numeric(lab_cfg$ylim %||% 1)
+  offs   <- band_half * as.numeric(lab_cfg$offset %||% 0)
+  rise_sign <- if (side == "bottom") -1 else 1
 
-  feat <- data.table(start = start(gr), end = end(gr), strand = strd,
+  if (anchor == "row") {
+    # One zone per row, each just clear of that row's own features: past the
+    # glyph's own half-height (feature_height) and `gap` row-halves further.
+    # Neighbouring zones stay disjoint as long as ylim <= 1, so a label still
+    # cannot drift into the row above or below.
+    rise  <- half * (a$feature_height + gap)
+    slack <- half * ylimf
+    zone_of <- rows
+    zone_ids <- sort(unique(rows))
+    label_zones <- data.table(
+      zone   = zone_ids,
+      centre = row_centre(zone_ids) + rise_sign * rise + offs,
+      slack  = slack)
+  } else {
+    # One strip for the whole track. `gap` raises its FLOOR (the edge nearest
+    # the features), so no label can settle closer than that to the genes
+    # however crowded the locus.
+    if (reserve > 0) {
+      strip_h <- a$height * reserve
+      if (side == "bottom") {
+        zone_lo <- a$ymin
+        zone_hi <- (a$ymax - feat_h) - strip_h * gap
+      } else {
+        zone_lo <- feat_top + strip_h * gap
+        zone_hi <- a$ymax
+      }
+    } else {
+      zone_lo <- a$ycen - band_half
+      zone_hi <- a$ycen + band_half
+    }
+    zone_of  <- rep(1L, n_feat)
+    label_zones <- data.table(
+      zone   = 1L,
+      centre = (zone_lo + zone_hi) / 2 + offs,
+      slack  = (zone_hi - zone_lo) / 2 * ylimf)
+  }
+
+  # `start`/`end` here are the DRAWN extent: everything below is geometry, and
+  # the true coordinates have already done their job in the label selection.
+  feat <- data.table(start = fstart, end = fend, strand = strd,
                      gene = nms, score = scr, color = col, y = ybase, track = a$name)
 
   boxes <- introns <- exons <- cds <- chevrons <- triangles <- empty
@@ -1507,9 +2228,11 @@ build_annotation_track <- function(a, chr_id, region_gr, window) {
     ex <- rbindlist(lapply(seq_along(gr), function(k) {
       b <- blocks[[k]]
       if (!length(b)) return(NULL)
-      # BED block coordinates are relative to the feature start
-      xs <- feat$start[k] + start(b) - 1
-      xe <- feat$start[k] + end(b) - 1
+      # BED block coordinates are relative to the feature start, and are laid
+      # out on the TRUE coordinates before being mapped onto the drawn model --
+      # only then does an exon keep its position within a zoomed gene.
+      xs <- zoom(tstart[k] + start(b) - 1, k)
+      xe <- zoom(tstart[k] + end(b) - 1, k)
       w  <- widen(xs, xe, minw)
       data.table(xmin = w$xmin, xmax = w$xmax,
                  ymin = feat$y[k] - utrh, ymax = feat$y[k] + utrh,
@@ -1523,7 +2246,8 @@ build_annotation_track <- function(a, chr_id, region_gr, window) {
       cd <- rbindlist(lapply(seq_along(gr), function(k) {
         e <- exons[idx == k]
         if (!nrow(e)) return(NULL)
-        c1 <- pmax(e$xmin, start(thick)[k]); c2 <- pmin(e$xmax, end(thick)[k])
+        c1 <- pmax(e$xmin, zoom(start(thick)[k], k))
+        c2 <- pmin(e$xmax, zoom(end(thick)[k], k))
         keep <- c2 > c1
         if (!any(keep)) return(NULL)
         w <- widen(c1[keep], c2[keep], minw)
@@ -1575,37 +2299,39 @@ build_annotation_track <- function(a, chr_id, region_gr, window) {
   }
 
   # --- labels ----------------------------------------------------------------
-  lab <- a$labels
+  # `sel` was chosen before the layout; all that is left is to put each label
+  # where its feature ended up.
+  lab <- lab_cfg
   labels <- empty
-  cand <- feat[!is.na(gene) & nzchar(gene)]
-  if (nrow(cand)) {
-    sel <- select_labels(cand, lab, window)
-    if (nrow(sel)) {
-      # label jitter and offset are fractions of the band's half-height too
-      # `offset` and `jitter` are fractions of the BAND half-height, not of the
-      # row. A label is pushed away from the features as a group, and with
-      # packed rows a row-relative offset would shrink with every extra row --
-      # exactly when you need it most.
-      jt <- zone_half * as.numeric(lab$jitter %||% 0)
-      if (!is.null(lab$seed)) set.seed(lab$seed)
-      labels <- data.table(
-        x = (sel$start + sel$end) / 2,
-        # The anchor stays ON the feature. ggrepel draws its leader line from
-        # the label back to this point, so baking the offset into y here would
-        # aim every line at empty space above the gene instead of at the gene.
-        y = sel$y,
-        # Nudge each label from its feature up to the label zone, so repulsion
-        # starts where the label belongs instead of on top of the gene.
-        nudge = (label_zone$centre - sel$y) +
-                (if (jt > 0) runif(nrow(sel), -jt, jt) else 0),
-        label = sel$gene, track = a$name)
-    }
+  if (nrow(sel)) {
+    # `offset` is a fraction of the BAND half-height, not of the row: a label
+    # is pushed away from the features as a group, and with packed rows a
+    # row-relative offset would shrink with every extra row -- exactly when you
+    # need it most. `jitter` scatters within the label's own zone.
+    sel_zone <- zone_of[sel$idx]
+    zsl <- label_zones[match(sel_zone, zone), slack]
+    zc  <- label_zones[match(sel_zone, zone), centre]
+    jt  <- zsl * as.numeric(lab$jitter %||% 0)
+    if (!is.null(lab$seed)) set.seed(lab$seed)
+    sel_y <- ybase[sel$idx]
+    labels <- data.table(
+      x = fmid[sel$idx],
+      # The anchor stays ON the feature. ggrepel draws its leader line from
+      # the label back to this point, so baking the offset into y here would
+      # aim every line at empty space above the gene instead of at the gene.
+      y = sel_y,
+      # Nudge each label from its feature to the centre of its zone, so
+      # repulsion starts where the label belongs instead of on top of the gene.
+      nudge = (zc - sel_y) +
+              (if (any(jt > 0)) runif(nrow(sel), -1, 1) * jt else 0),
+      zone = sel_zone,
+      label = sel$gene, track = a$name)
   }
 
   list(boxes = boxes, introns = introns, exons = exons, cds = cds,
        chevrons = chevrons, triangles = triangles, labels = labels,
        # computed once here so the renderer never re-derives the geometry
-       label_zone = label_zone)
+       label_zones = label_zones, score_lims = score_lims)
 }
 
 # =============================================================================
@@ -1693,13 +2419,28 @@ render_locus <- function(locus) {
 
   # Every track aligns to the same visible interval as the heatmaps.
   visible_region <- lims$visible
-  region_gr <- GRanges(seqnames = chr_label,
-                       ranges = IRanges(visible_region$start, visible_region$end))
   window <- visible_region$end - visible_region$start
+
+  # WHAT IS QUERIED IS NOT WHAT IS DRAWN. The visible interval may run past
+  # either end of the chromosome -- `padding_fraction` adds context that does
+  # not exist at a telomere, and a whole-chromosome locus is normally written
+  # past the end -- and a BigWig query whose start is below 1 returns NOTHING,
+  # with no error and no warning: the mark simply comes out blank. So the file
+  # queries are clamped to the chromosome while `window` and the coordinates
+  # keep the full visible range, which is what holds the tracks in step with
+  # the heatmaps above.
+  chr_size <- chr.list[chr == chr_id, size]
+  q_start  <- max(1, visible_region$start)
+  q_end    <- if (length(chr_size)) min(chr_size, visible_region$end) else visible_region$end
+  if (q_end <= q_start) {
+    stop("region '", locus$region, "' lies outside chr", chr_id,
+         ", which is ", chr_size, " bp long", call. = FALSE)
+  }
+  region_gr <- GRanges(seqnames = chr_label, ranges = IRanges(q_start, q_end))
 
   # ---- marks ----------------------------------------------------------------
   mk_tracks <- tracks_of("mark")
-  bw_signal_dt <- bin_marks(region_gr)
+  bw_signal_dt <- bin_marks(region_gr, locus)
   scale_labels <- data.table()
   if (nrow(bw_signal_dt)) {
     bw_signal_dt[, log_signal := log10(1 + signal)]
@@ -1841,27 +2582,43 @@ render_locus <- function(locus) {
       # The box repulsion may move a label inside, computed once by the builder
       # so the two places cannot drift apart. Pinning it to the band centre
       # would drag every label back onto the features and undo the reserve.
-      zone       <- an_parts[[i]]$label_zone
-      lab_centre <- zone$centre
-      slack      <- zone$slack
-      tracks_plot <- tracks_plot + geom_text_repel(
-        data = d, aes(x = x, y = y, label = label),
-        # nudge_y moves the label while leaving the anchor on the feature, so
-        # the leader line keeps pointing at the gene it names.
-        nudge_y = d$nudge,
-        size = as.numeric(lab$size %||% 2),
-        color = as.character(lab$color %||% "black"),
-        fontface = as.character(lab$fontface %||% "bold"),
-        force = as.numeric(lab$force %||% 15), max.overlaps = Inf,
-        # direction: "x" keeps every label at its height and spreads them
-        # sideways -- usually what you want above a gene track; "y" stacks
-        # them vertically; "both" lets repulsion use either axis.
-        direction = as.character(lab$direction %||% "both"),
-        min.segment.length = as.numeric(lab$min_segment_length %||% 0),
-        segment.size = as.numeric(lab$segment_size %||% 0.2),
-        segment.color = as.character(lab$segment_color %||% lab$color %||% "black"),
-        box.padding = as.numeric(lab$box_padding %||% 0.2), point.padding = 0.1,
-        ylim = c(lab_centre - slack, lab_centre + slack), inherit.aes = FALSE)
+      # ONE LAYER PER ZONE. ggrepel takes a single `ylim` for a whole layer, so
+      # a track whose labels ride their own rows needs one layer per row --
+      # otherwise every label would inherit one row's limits. The zones are
+      # disjoint by construction, so splitting them costs no repulsion that
+      # could have mattered: two labels that cannot reach the same height
+      # cannot collide.
+      zones <- an_parts[[i]]$label_zones
+      for (zid in sort(unique(d$zone))) {
+        dz <- d[zone == zid]
+        zc <- zones[zone == zid]
+        tracks_plot <- tracks_plot + geom_text_repel(
+          data = dz, aes(x = x, y = y, label = label),
+          # nudge_y moves the label while leaving the anchor on the feature, so
+          # the leader line keeps pointing at the gene it names.
+          nudge_y = dz$nudge,
+          size = as.numeric(lab$size %||% 2),
+          color = as.character(lab$color %||% "black"),
+          fontface = as.character(lab$fontface %||% "bold"),
+          # `force` is how hard labels shove EACH OTHER apart, `force_pull` how
+          # hard each is drawn back to its own feature. Both only ever act
+          # WITHIN the zone: `ylim` below is a hard boundary, so neither force
+          # can pull a label out of the strip it was assigned. If the labels sit
+          # too far from the genes, that is the zone's doing -- move it with
+          # `anchor`, `side`, `reserve` and `gap`, not with the forces.
+          force = as.numeric(lab$force %||% 15),
+          force_pull = as.numeric(lab$force_pull %||% 1),
+          max.overlaps = Inf,
+          # direction: "x" keeps every label at its height and spreads them
+          # sideways -- usually what you want above a gene track; "y" stacks
+          # them vertically; "both" lets repulsion use either axis.
+          direction = as.character(lab$direction %||% "both"),
+          min.segment.length = as.numeric(lab$min_segment_length %||% 0),
+          segment.size = as.numeric(lab$segment_size %||% 0.2),
+          segment.color = as.character(lab$segment_color %||% lab$color %||% "black"),
+          box.padding = as.numeric(lab$box_padding %||% 0.2), point.padding = 0.1,
+          ylim = c(zc$centre - zc$slack, zc$centre + zc$slack), inherit.aes = FALSE)
+      }
     } else {
       # No repulsion: draw the label at the anchor plus its nudge, no leader line.
       tracks_plot <- tracks_plot + geom_text(
@@ -1902,6 +2659,14 @@ render_locus <- function(locus) {
       axis.ticks.x = element_blank(),
       plot.margin = margin(0, 0, 0, 1),
       panel.border = element_rect(fill = NA, color = "black"))
+
+  # 6) colour bars for the annotation tracks drawn on a gradient. Added last:
+  # each one turns the track panel into a patchwork, and a theme applied to a
+  # patchwork lands on every plot inside it, insets included.
+  for (i in seq_along(an_tracks)) {
+    ins <- build_score_legend(an_tracks[[i]], an_parts[[i]]$score_lims, tracks_ylim)
+    if (!is.null(ins)) tracks_plot <- tracks_plot + ins
+  }
 
   # ---- combine and write ----------------------------------------------------
   final_plot <- wrap_plots(c(plot_ls, list(tracks_plot)), ncol = 1) +

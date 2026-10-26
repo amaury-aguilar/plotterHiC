@@ -234,6 +234,11 @@ tracks: {
       style: arc,    # arc (loops) | domain (TADs)
       height: 1.2,
       add_chr: true, # bedpe stores "2" but the genome needs "chr2"
+      # A filled arc takes the same per-feature alpha as a domain bar, so
+      # nested structures drawn as arcs can also darken with depth:
+      #   fill: dodgerblue, alpha_by: depth, alpha_range: [0.15, 0.8]
+      # Deeper arcs are drawn last, so a small nested one is never buried
+      # under the wide one containing it.
       fill: none,    # 'none' = outline only
       alpha: 0.25,
       line_color: grey30,
@@ -266,16 +271,42 @@ tracks: {
     },
 
     # --- structure: TAD domains from a bedpe ---------------------
+    #
+    # NESTED DOMAINS. A TAD caller emits sub-TADs inside TADs, and on one line
+    # they simply draw on top of each other. Two settings deal with that, and
+    # they are independent -- `layout` gives the levels room, `alpha_by` gives
+    # them contrast:
+    #
+    #   layout: single   every bar on one line, as before
+    #           packed   rows, no two OVERLAPPING bars on a row. Compact, the
+    #                    "squished" look of a genome browser, but a shared row
+    #                    means only "these two do not overlap"
+    #           nested   row = nesting depth: outermost on top, and a child
+    #                    always exactly one row below its parent. Taller, and
+    #                    it reads as a hierarchy because it is one
+    #   max_rows caps the rows either way (deeper levels pile onto the last).
+    #   Bar height is relative to the ROW, so extra rows make the bars thinner
+    #   instead of overflowing the band.
     TADs_ysEC: {
       enabled: false,
       type: structure,
       file: /Users/amaury/lastHiC_analysis/bedpes/Ctcf_WT.TADs_3925MvP.p1_lfc0.bedpe,
       style: domain,
-      height: 0.5,
-      feature_height: 0.5,  # bar height, as a fraction of the band
+      height: 0.8,          # nested rows need more band than one line does
+      feature_height: 0.7,  # bar height, as a fraction of the ROW
+      layout: nested,       # single | packed | nested
+      max_rows: 4,          # 0 = as many rows as the nesting needs
+      row_gap_frac: 0.005,  # min gap between two bars sharing a row (packed)
       add_chr: true,
       fill: dodgerblue,
+      # PER-FEATURE ALPHA. 'depth' makes a sub-TAD more intense than the domain
+      # around it, which is what turns overlapping bars into levels you can
+      # count. alpha_range is [outermost, deepest]; write it backwards to
+      # invert. With alpha_by: none the single `alpha` above is used instead.
+      #   none | depth | score | span
       alpha: 0.35,
+      alpha_by: depth,
+      alpha_range: [0.2, 0.9],
       line_color: grey30,
       line_width: 0.2,
       max_n: 12

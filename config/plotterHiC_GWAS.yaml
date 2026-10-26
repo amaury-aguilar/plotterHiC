@@ -1,0 +1,713 @@
+# 2026-Aug-5 ====================================================
+# plotterHiC_GWAS.yaml -- Ctcf-WT vs Ctcf-KO differential Hi-C
+#
+# Usage:
+#   Rscript plotterHiC.r config/plotterHiC_GWAS.yaml
+#       one figure per entry in global.loci
+#
+#   Rscript plotterHiC.r config/plotterHiC_GWAS.yaml chr2:112225000-114225000 Actc1
+#       single figure; the CLI region and name override global.loci
+# -----------------------------------------------------------------
+
+global: {
+  genome: mm10,                 # mm10 | hg38 | hg19 | mm10_test
+  resolution: 5000, # bin size; a .hic may override it below
+  padding_fraction: 0.333,  # extra context added on each side
+
+  loci: {
+    "Bach1": {
+      enabled: true,
+      region: chr16:87600000-87800000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 4, max: 12 },
+      subtraction: { min: q0.1, max: q0.9 }
+      #ratio:       { min: 0.5,   max: 2 }
+    },
+
+    "Senp1": {
+      enabled: true,
+      region: chr15:97970000-98185000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 4, max: 12 },
+      subtraction: { min: q0.1, max: q0.9 }
+      #ratio:       { min: 0.5,   max: 2 }
+    },
+
+    "Epb41": {
+      enabled: true,
+      region: chr4:131815000-132100000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 4, max: 12 },
+      subtraction: { min: q0.1, max: q0.9 }
+      #ratio:       { min: 0.5,   max: 2 }
+    },
+
+    "Sptb": {
+      enabled: true,
+      region: chr12:76526000-76785000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 4, max: 12 },
+      subtraction: { min: q0.1, max: q0.9 }
+      #ratio:       { min: 0.5,   max: 2 }
+    }, 
+
+    "Bmp2k": {
+      enabled: true,
+      region: chr5:96783000-97132000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 4, max: 12 },
+      subtraction: { min: q0.1, max: q0.9 }
+      #ratio:       { min: 0.5,   max: 2 }
+    }, 
+
+    "Rpl27a": {
+      enabled: true,
+      region: chr7:109490000-109750000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 4, max: 12 },
+      subtraction: { min: q0.1, max: q0.9 }
+      #ratio:       { min: 0.5,   max: 2 }
+    }, 
+
+    "Tmod1": {
+      enabled: false,
+      region: chr4:45400000-46600000, resolution: 25000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 2, max: 10 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },  
+
+    "Ephb4": {
+      enabled: false,
+      region: chr5:137100000-137600000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },        
+
+    "Flt4": {
+      enabled: false,
+      region: chr11:49400000-49900000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },       
+
+    "Elk3": {
+      enabled: false,
+      region: chr10:93000000-93500000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },         
+
+    "Cldn5": {
+      enabled: false,
+      region: chr16:18600000-19000000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },
+
+    "Ldb3": {
+      enabled: true,
+      region: chr14:34300000-34800000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },  
+
+    "Myl4": {
+      enabled: false,
+      region: chr11:104250000-104700000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: q0.05, max: q0.95 }
+      #ratio:       { min: q0.01,   max: q0.99 }
+    },    
+
+    "Hba-a1": {
+      enabled: true,
+      region: chr11:32100000-32350000, resolution: 5000,
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -50, max: 50 }
+      #ratio:       { min: 0.5,   max: 2 }
+    },
+    Tfrc: {
+      enabled: false,
+      region: chr16:32300000-32700000, resolution: 5000, 
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -30, max: 40 }
+    },
+    Tal1: {
+      enabled: false,
+      region: chr4:114850000-115200000, resolution: 5000, 
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -25, max: 15 }
+    },
+
+    Tal1_zoom: {
+      enabled: true,
+      region: chr4:114950000-115200000, resolution: 5000, 
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -25, max: 15 }
+    },
+
+    Ccnd3: {
+      enabled: false,
+      region: chr17:47350000-47750000, resolution: 5000, 
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -20, max: 20 }
+    },
+    Dll4: {
+      enabled: false,
+      region: chr2:118950000-119450000, resolution: 5000, 
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -20, max: 10 }
+    },
+    Tnni3: {
+      enabled: false,
+      region: chr7:4080000-4950000, resolution: 10000, 
+      plot_width: 10, plot_height: 16,
+      log2:        { min: 3, max: 12 },
+      subtraction: { min: -40, max: 30 }
+    },             
+
+  },
+
+  output: {
+    dir: /Users/amaury/lastHiC_analysis/rplotter_ysEC_GWAS,
+    formato: png,               # png | pdf
+    plot_width: 10,             # cm
+    plot_height: 10,             # cm
+    dpi: 500                    # png only
+  }
+}
+# ================================================================
+hic: {
+  norm: KR, 
+  files: {
+    "Ctcf-KO": /Users/amaury/lines/mouse/endothelial_Cells/juicer/Ctcf_KO.allReps.896MvP.hic,
+    "Ctcf-WT": /Users/amaury/lines/mouse/endothelial_Cells/juicer/Ctcf_WT.allReps.896MvP.hic
+  },
+
+  legend_defaults: {
+    show: true,
+    position: [-0.08, 0.5],
+    direction: vertical,
+    title_size: 5,
+    text_size: 5,
+    key_height: 6,
+    key_width: 5,
+    n_breaks: 5, # 0 = let ggplot decide
+    title_lineheight: 0.9,
+    margin: 0,
+    ticks: true
+  },
+
+  panel_defaults: {
+    matrix: log2,
+    oob: squish,
+    log2:        { normalize: true },
+    subtraction: { normalize: false },
+    ratio:       { normalize: false }
+  },
+
+
+  panels: [
+    { enabled: true,  name: "Ctcf-WT",          hic: "Ctcf-WT" },
+    { enabled: true,  name: "Ctcf-KO",          hic: "Ctcf-KO" },
+    { enabled: true,  name: "", hic: "Ctcf-KO", vs: "Ctcf-WT", matrix: subtraction },
+    { enabled: false, name: "Ctcf-KO / Ctcf-WT", hic: "Ctcf-KO", vs: "Ctcf-WT", matrix: ratio }
+  ]
+}
+
+tracks: {
+
+  panel_height: 2, # height of whole track panel vs one heatmap
+  spacing: 0.2,   # gap between every consecutive pair of tracks
+  label_size: 6,  # size of the track names on the y axis
+
+  list: {
+    TADs: {
+      enabled: false,
+      type: structure,
+      file: /Users/amaury/lastHiC_analysis/bedpes/Ctcf_WT.TADs_3925MvP.p1_lfc0.bedpe,
+      style: domain,
+      layout: nested,
+      max_rows: 4, 
+      height: 0.8,
+      feature_height: 0.5,  # bar height, as a fraction of the band
+      add_chr: true,
+      fill: dodgerblue,
+      alpha: 0.3,
+      line_color: grey30,
+      line_width: 0.1,
+      max_n: 20
+    },
+    Loops: {
+      enabled: true,
+      type: structure,
+      file: /Users/amaury/lastHiC_analysis/bedpes/all_promoters_at_Loop_Anchors.bedpe,
+      style: arc,    # arc (loops) | domain (TADs)
+      height: 0.9,
+      add_chr: true, # bedpe stores "2" but the genome needs "chr2"
+      fill: none,    # 'none' = outline only
+      alpha: 0.25,
+      line_color: grey30,
+      line_width: 0.3,
+      line_type: solid,
+      arc_resolution: 60,   # points per semicircle
+      # ARC HEIGHT. An arc is a half ellipse, so its height is set on its own,
+      # not by its width. `span` makes it proportional to the loop's length,
+      # which is why a locus mixing 20 kb loops with a 5 Mb one loses the local
+      # ones. `log` spreads the same lengths logarithmically over the band, so
+      # a 20 kb loop still gets a real dome next to a 5 Mb one. `rank` ignores
+      # the lengths and spreads by ORDER, if even log is not enough.
+      height_by: log,
+      # BOTH ENDS OF THE SCALE ARE ABSOLUTE ON PURPOSE. `auto` would take them
+      # from whatever is in view -- the shortest loop always at the floor, the
+      # longest always at the ceiling -- so the same 50 kb loop would be drawn
+      # at a different height in every figure, and one 5 Mb passer-by would drag
+      # the whole local range down with it. Fixed in bp, a 10 kb loop is at the
+      # bottom and a 500 kb one at the top in EVERY locus, and heights can be
+      # read across figures.
+      height_span_min: 10000,   # bottom of the scale (log only)
+      height_span: 500000,      # ...and the span drawn one full band tall
+      # The top of the scale is also tied to the longest loop the filter below
+      # lets through (max_span_frac, i.e. 2 windows): past ~830 kb of window the
+      # fraction wins, and the long tail keeps spreading over the band instead
+      # of piling up on the ceiling. Under that, the absolute 500 kb rules and
+      # the heights stay comparable between figures.
+      height_span_frac: 2,      # same, as a fraction of the window; larger wins
+      # The whole scale is squeezed into this slice of the band: the floor keeps
+      # a local loop reading as a loop instead of a bump on the baseline, and
+      # the ceiling leaves headroom so the longest arc does not run along the
+      # divider at the top of the track and pass for part of the frame.
+      height_min: 0.4,
+      height_max: 0.85,
+      crop: true,           # only reachable under height_by: span
+      max_n: 10,            # cap per locus; 0 = draw all
+      # Careful with the cap now that the long loops are allowed through:
+      # rank_desc: false keeps the max_n SHORTEST, so a dense locus could drop
+      # exactly the long ones. 24 loops reach the Tal1 window, so 50 is slack.
+      rank_by: length,      # length | score | random
+      rank_desc: false,    # true = keep the LONGEST loops in view
+      min_span: 0,       # ignore structures shorter than this (bp)
+      max_span: 0,       # ...or longer than this; 0 = off
+      min_span_frac: 0,
+      # A loop more than ~2 windows long has neither anchor nor apex to show
+      # here: what is drawn is the flat top of an arc whose ends are off-panel,
+      # i.e. a horizontal rule across the track. Height mapping cannot fix that
+      # -- every smooth curve is flat at its apex -- so those are dropped, and
+      # as a fraction of the window the same rule holds at any zoom.
+      max_span_frac: 2
+      # columns: [chr1, start1, end1, chr2, start2, end2],  # only if the bedpe
+      # select:  [1, 2, 3, 4, 5, 6]        # is not standard
+    },
+
+    CTCF: {
+      enabled: true,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/Ctcf.Ctcf_WT.ys115_ys200.trim_Ad_3pb.h2.scaleFact.bw,
+      height: 1,
+      color: blue2,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: false,
+      signal_scale: 70 # auto
+    },
+# /Users/amaury/lastHiC_analysis/GWAS_enhancers/02_GWAS_regiones/11_ctcf_variants_con_y_sin_enhancer.bed
+    CTCF_variants: {
+      enabled: true,
+      type: annotation,
+      file: /Users/amaury/lastHiC_analysis/GWAS_enhancers/02_GWAS_regiones/11_ctcf_variants_con_y_sin_enhancer.bed,
+      select:  [1, 2, 3, 4, 5, 6],
+      columns: [chr, start, end, name, score, strand],
+      style: box,
+      height: 0.25,
+      layout: single,
+      jitter: 0,
+      feature_height: 1,
+      min_feature_frac: 0.006,
+      min_feature_width: 0,
+      color: blue2,
+      line_width: 0.2,
+      direction: none
+    },
+
+    CTCF_variants_a: {
+      enabled: false,
+      type: annotation,
+      file: /Users/amaury/lastHiC_analysis/GWAS_enhancers/02_GWAS_regiones/11a_ctcf_variants_con_enhancer.mm10.bed,
+      select:  [1, 2, 3, 4, 5, 6],
+      columns: [chr, start, end, name, score, strand],
+      style: box,
+      height: 0.25,
+      layout: single,
+      jitter: 0,
+      feature_height: 1,
+      min_feature_frac: 0.006,
+      min_feature_width: 0,
+      color: blue2,
+      line_width: 0.2,
+      direction: none
+    },
+
+    CTCF_variants_b: {
+      enabled: false,
+      type: annotation,
+      file: /Users/amaury/lastHiC_analysis/GWAS_enhancers/02_GWAS_regiones/11b_ctcf_variants_sin_enhancer.mm10.bed,
+      select:  [1, 2, 3, 4, 5, 6],
+      columns: [chr, start, end, name, score, strand],
+      style: box,
+      height: 0.25,
+      layout: single,
+      jitter: 0,
+      feature_height: 1,
+      min_feature_frac: 0.006,
+      min_feature_width: 0,
+      color: blue2,
+      line_width: 0.2,
+      direction: none
+    },
+
+    H3K4me1: {
+      enabled: true,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me1.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw,
+      height: 1,
+      color: yellow4,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: true,
+      signal_scale: 30
+    },
+
+    H3K27ac: {
+      enabled: true,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27ac.Ctcf_WT.ys204_ys240.trim_Ad_3pb.h2.scaleFact.bw,
+      height: 1,
+      color: green4,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: true,
+      signal_scale: 100
+    },
+
+    Enhancers_variants: {
+      enabled: true,
+      type: annotation,
+      file: /Users/amaury/lastHiC_analysis/GWAS_enhancers/02_GWAS_regiones/06_gwas_variants.mm10.bed,
+      # THIS FILE IS NOT A BED PAST COLUMN 6. It keeps its own table (trait,
+      # category, cluster, ...) and column 7 is text where the format says
+      # thickStart, an integer -- rtracklayer reads a BED by position AND
+      # meaning, so it dies there with "expected 'an integer'". Naming the
+      # columns skips the importer and takes only these six. Column 5 is the
+      # PIP, which lands in `score`, so `color_by: score` would work here.
+      select:  [1, 2, 3, 4, 5, 6],
+      columns: [chr, start, end, name, score, strand],
+      style: box,
+      height: 0.25,
+      layout: single,  # density at a glance, no row bookkeeping
+      jitter: 0,
+      feature_height: 1,   # 1 = the box fills the whole band vertically
+      # These enhancers are 54 bp to 1.9 kb: a third of a pixel in a 250 kb
+      # view, so without a floor the track is empty. Each box narrower than the
+      # floor is grown about its own midpoint until it reaches it -- position is
+      # kept, only the drawn width is exaggerated. As a fraction of the visible
+      # window (min_feature_frac) or in bp (min_feature_width); larger wins.
+      min_feature_frac: 0.006,
+      min_feature_width: 0,
+      color: green4,
+      line_width: 0.2,
+      direction: none
+    },
+
+    H3K27me3: {
+      enabled: false,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K27me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw,
+      height: 1,
+      color: red3,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: true,
+      signal_scale: 20
+    },
+
+    H3K4me3: {
+      enabled: false,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/H3K4me3.Ctcf_WT.trim_Ad_3pb.h2.scaleFact.bw,
+      height: 1,
+      color: orange1,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: true,
+      signal_scale: 8
+    },
+
+    RNAseq_WT: {
+      enabled: false,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_WT.trim.paired.star.scaleFact.bw,
+      height: 1,
+      color: pink4,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: true,
+      signal_scale: 4
+    },
+
+    RNAseq_KO: {
+      enabled: false,
+      type: mark,
+      file: /Users/amaury/toronto_CUTNTag/bigwigs_normalized_by_SF/rnaseq.Ctcf_KO.trim.single.star.scaleFact.bw,
+      height: 1,
+      color: pink4,
+      alpha: 0.9,
+      line_color: black,
+      line_width: 0.2,
+      n_bins: 300,
+      crop: true,
+      show_scale: true,
+      signal_scale: 4
+    },    
+
+    RefSeq: {
+      enabled: false,
+      type: annotation,
+      file: /Users/amaury/genes/mm10.gene.track.sym.sorted.bed,
+      style: model,   # model (BED12 exons/introns) | box (any BED)
+      height: 0.75,
+      layout: packed,   # single | packed | jitter
+      max_rows: 2,      # 0 = as many rows as the features need
+      row_gap_frac: 0.01,
+      feature_height: 0.5,   # feature half-height
+      color: "#1a1a1a", # omit to take colour from the BED itemRgb
+      line_color: black,
+      line_width: 0.2,
+      direction: chevrons,   # chevrons | triangle | none
+      chevron_n: 5,
+      utr_thinner: true,     # draw UTRs thinner than the CDS
+      utr_frac: 0.45,
+      min_exon_frac: 0.0015, 
+      labels: {
+        enabled: false,
+        size: 1.5,
+        color: black,
+        fontface: italic,
+        reserve: 0.45,
+        repel: true,    
+        direction: both, 
+        gap: 0.4,
+        ylim: 0.9,
+        offset: 0,
+        jitter: 0,    # extra random scatter within the interval
+        segment_size: 0.2, # leader line to feature; 0 to remove
+        box_padding: 0.2,
+        dedup: true,    # one label per name (collapses isoforms)
+        max_n: 6,       # cap the number of labels; 0 = no cap
+        rank_by: length,  # length | score | position | random
+        rank_desc: true,  # true = longest / highest first
+        min_width: 0,     # skip features narrower than this (bp)
+        min_width_frac: 0.01, 
+        include: [],  
+        exclude: []  # never label these
+      }
+    },
+    DEGs: {
+      enabled: true,
+      type: annotation,
+      file: /Users/amaury/genes/Ctcf_WT_KO.DEGs.filtered_by_Tie2_ATAC.Accesible_Inaccesible.genebody.bed,
+      style: model,   # model (BED12 exons/introns) | box (any BED)
+      height: 1.5,
+      layout: packed,   # single | packed | jitter
+      max_rows: 2,      # 0 = as many rows as the features need
+      row_gap_frac: 0.01,
+      feature_height: 0.5,
+      color: "#8F8F8F",
+      color_by: score,       # none | score
+      color_scale: {
+        low: "#2166ac",      # down in KO
+        mid: white,         
+        high: "#b2182b",    
+        midpoint: 0,
+        limits: [-4, 4],
+        na_color: grey70, 
+        legend: {
+          show: true,
+          title: log2FC,
+          position: [-0.19, auto],
+          width: 0.075,
+          height: auto,
+          n_breaks: 3, # ...or name them: breaks: [-4, -2, 0, 2, 4]
+          digits: 2,
+          text_size: 3.5,
+          title_size: 4,
+          ticks: true
+        }
+      },
+      line_color: black,
+      line_width: 0.2,
+      direction: triangle,   # chevrons | triangle | none
+      chevron_n: 5,
+      # A DEG of 2 kb is a third of a pixel in a 1.5 Mb view, so the arrowhead
+      # is what actually carries it: arrow_frac is a fraction of the WINDOW, so
+      # the head is the same size whatever the gene's length.
+      arrow_frac: 0.012,
+      utr_thinner: true,     # draw UTRs thinner than the CDS
+      utr_frac: 0.45,
+      min_exon_frac: 0.005,
+      # ...and the gene body gets a floor too: anything narrower than 1.2% of
+      # the window is drawn zoomed about its own midpoint until it reaches it,
+      # exons and all. This is the one setting that draws out of scale, so keep
+      # it just big enough to see. 0 = off; min_feature_width does it in bp.
+      min_feature_frac: 0.012,
+      labels: {
+        enabled: true,
+        size: 2.5,
+        color: black,
+        fontface: italic,
+        # WHERE THE LABELS GO. This, not the repulsion forces, is what decides
+        # how far a name ends up from its gene. Every label is nudged into a
+        # ZONE, and the forces only ever move it WITHIN that zone -- so if the
+        # zone is at the top of the band, no force_pull can bring a label on the
+        # bottom row any closer.
+        #
+        #   anchor: band  ONE strip for the whole track, at one end of the band.
+        #                 Features and labels never share space, so no label can
+        #                 land on a gene -- but with packed rows the far row's
+        #                 labels are most of a band away from what they name.
+        #           row   each label rides its OWN row, just clear of its own
+        #                 feature. Short leader lines everywhere; the cost is
+        #                 that a label may now sit over a feature of another row.
+        #   side:   top | bottom -- which end of the band the strip is taken
+        #                 from, or which side of the feature the label rises to.
+        #
+        # `reserve` applies to `anchor: band` only; under `anchor: row` no strip
+        # is taken, so the genes keep the whole band. `gap` is the clearance
+        # from the features either way: a fraction of the strip under `band`,
+        # of the row half-height under `row`.
+        anchor: row,
+        side: bottom,
+        reserve: 0.2,
+        gap: 0.35,
+        repel: true,
+        direction: both,
+        # ylim: how much of its own zone repulsion may use, 1 = all of it. Row
+        # zones stay disjoint even at 1, so a label can never cross into the
+        # row above or below. force / force_pull then settle collisions inside
+        # that room -- `force` is how hard labels shove each other apart,
+        # `force_pull` how hard each is pulled back onto its own gene.
+        ylim: 0.8,
+        force: 3,
+        force_pull: 10,
+        offset: 0,
+        jitter: 0,    # extra random scatter within the interval
+        segment_size: 0.2, # leader line to feature; 0 to remove
+        box_padding: 0.2,
+        dedup: true,    # one label per name (collapses isoforms)
+        max_n: 6,       # cap the number of labels; 0 = no cap
+        # Only matters once more than max_n genes compete. Note `score` sorts
+        # the RAW column, and this BED stores a signed log2FC -- so `score` +
+        # rank_desc would rank the down-regulated genes last, not first.
+        rank_by: length,  # length | score | position | random
+        rank_desc: true,  # true = longest / highest first
+        # SIZE FILTERS, OFF HERE ON PURPOSE. They exist to keep a dense RefSeq
+        # track readable, and they read the gene's TRUE width -- min_feature_frac
+        # above only changes how wide it is DRAWN. On a sparse DEG track they do
+        # nothing but hide the genes the figure is about: at chr11:32.1-32.35 Mb
+        # `min_width_frac: 0.01` is a ~3 kb floor, which drops Hba-a1 (815 bp)
+        # and Hbq1b (949 bp) and leaves only Rhbdf1 and Snrnp25 named.
+        min_width: 0,       # skip features narrower than this (bp)
+        min_width_frac: 0,  # ...or narrower than this fraction of the window
+        # `include` names genes that must be labelled whatever the filters and
+        # the max_n cap say, so a locus can guarantee its subject is named:
+        #   include: ["Hba-a1", Hbq1b]
+        include: [],
+        exclude: []  # never label these
+      }
+    }
+
+  }
+}
+
+# Marks listed together share one y scale, so their heights are comparable.
+# Leave empty for every mark to be scaled independently. The mESC ChIP and the ysEC CUT&Tag come from different assays with different dynamic ranges, so they are scaled independently here.
+shared_yaxis_groups: {
+  ATAC: [ATAC_WT, ATAC_KO],
+  RNAseq: [RNAseq_WT, RNAseq_KO]
+}
+
+plot: {
+  # ORDER OVERRIDE. Declaration order is still what draws the figure: the first
+  # track written is the top band, the first panel the top heatmap. This is only
+  # so that CHANGING that order does not mean moving the blocks -- a track entry
+  # is thirty lines of settings and comments, and dragging it three places up is
+  # the edit that loses a brace.
+  #
+  # Each list may be PARTIAL: what it names is drawn first, in that order, and
+  # everything it does not name follows in declaration order. So pulling one
+  # track to the top is a one-line edit here, and the rest keep the relative
+  # order the file already gives them.
+  #
+  #   tracks  the keys of tracks.list
+  #   panels  a panel's `name`, or its matrix type for the one left unnamed
+  #           (so `subtraction` reaches the third panel below)
+  #
+  # A name that belongs to a DISABLED entry is skipped -- turning a track off
+  # never forces a second edit here. A name that belongs to nothing stops the
+  # run and lists what is valid.
+  #
+  #   order: {
+  #     tracks: [DEGs, Enhancers_variants, CTCF, CTCF_var_enh],
+  #     panels: [subtraction, Ctcf-WT, Ctcf-KO]
+  #   },
+
+  order: {
+    panels: ["Ctcf-WT", "Ctcf-KO", "subtraction"],
+    tracks: [Loops,DEGs, CTCF, CTCF_variants, H3K4me1, H3K27ac, Enhancers_variants]
+  },
+
+  # The genomic axis on top of the first heatmap.
+  #   divide      unit of the coordinate labels (1000000 = Mb)
+  #   text_size   size of the coordinate labels
+  #   title_size  size of the chromosome name above them
+  x_axis: { divide: 1000000, text_size: 6, title_size: 6 },
+  # How much of the rotated square to keep: crop.x trims the left/right corners, whose bins pair with positions outside the window.
+  crop: { x: [0.2, 0.8], y: 0.7 }
+  # tracks_limits: [0, 6] # manual override of the track panel y range
+}
